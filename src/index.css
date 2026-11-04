@@ -5,6 +5,19 @@
   html {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    overscroll-behavior-y: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Eliminate 300ms mobile touch delay on interactive controls */
+  button, a, input, select, textarea, [role="button"] {
+    touch-action: manipulation;
   }
 
   code, pre, .font-mono {
@@ -12,3 +25,13 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* Mobile Safe Area & Touch Ergonomics */
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 1rem);
+}
+
+@utility pt-safe {
+  padding-top: max(env(safe-area-inset-top, 0px), 1rem);
+}
+

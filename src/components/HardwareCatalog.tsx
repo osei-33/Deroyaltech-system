@@ -244,7 +244,7 @@ export const HardwareCatalog: React.FC<HardwareCatalogProps> = ({
 
                   <button
                     onClick={() => handleAdd(product)}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 ${
+                    className={`min-h-[44px] px-3.5 py-2 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 active:scale-95 ${
                       isJustAdded
                         ? 'bg-emerald-600 text-white'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600'

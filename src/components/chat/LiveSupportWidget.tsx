@@ -106,13 +106,12 @@ export const LiveSupportWidget: React.FC = () => {
   return (
     <>
       {/* Floating Launcher Trigger */}
-      <div className="fixed bottom-5 right-5 z-40 flex items-center gap-3">
+      <div className="fixed bottom-18 sm:bottom-6 right-3 sm:right-6 z-40 flex items-center gap-2.5">
         {!isChatWidgetOpen && (
           <div 
             onClick={() => setIsChatWidgetOpen(true)}
             className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/90 dark:bg-slate-800/90 backdrop-blur-md border border-slate-700/60 shadow-lg text-xs text-slate-200 cursor-pointer hover:border-blue-500/50 transition-all hover:scale-[1.02]"
           >
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
             <span className="font-medium">Live Engineering Support</span>
             <span className="text-[10px] text-emerald-400 font-mono font-bold bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/40">ONLINE</span>
           </div>
@@ -121,17 +120,17 @@ export const LiveSupportWidget: React.FC = () => {
         <button
           onClick={() => setIsChatWidgetOpen(!isChatWidgetOpen)}
           aria-label="Open DeRoyalTech Live Support"
-          className="relative group p-3.5 sm:p-4 rounded-full bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-xl shadow-blue-600/30 hover:shadow-blue-500/50 transition-all transform hover:scale-105 active:scale-95"
+          className="relative group p-3 sm:p-4 rounded-full bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-xl shadow-blue-600/30 hover:shadow-blue-500/50 transition-all transform hover:scale-105 active:scale-95 min-h-[44px] min-w-[44px] flex items-center justify-center"
         >
           {isChatWidgetOpen ? (
-            <X className="w-6 h-6 transition-transform group-hover:rotate-90" />
+            <X className="w-5 h-5 sm:w-6 sm:h-6 transition-transform group-hover:rotate-90" />
           ) : (
-            <MessageSquare className="w-6 h-6 transition-transform group-hover:scale-110" />
+            <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 transition-transform group-hover:scale-110" />
           )}
 
           {/* Unread badge */}
           {totalClientUnread > 0 && !isChatWidgetOpen && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white font-bold text-[10px] flex items-center justify-center border-2 border-white dark:border-slate-900 animate-bounce">
+            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white font-bold text-[10px] flex items-center justify-center border-2 border-white dark:border-slate-900">
               {totalClientUnread}
             </span>
           )}
@@ -140,7 +139,7 @@ export const LiveSupportWidget: React.FC = () => {
 
       {/* Live Support Modal / Flyout Window */}
       {isChatWidgetOpen && (
-        <div className="fixed bottom-20 sm:bottom-24 right-3 sm:right-6 z-40 w-[94vw] sm:w-[410px] max-w-[430px] h-[580px] max-h-[82vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden backdrop-blur-lg animate-in fade-in slide-in-from-bottom-5 duration-200">
+        <div className="fixed bottom-18 sm:bottom-24 right-2 sm:right-6 z-40 w-[calc(100vw-1rem)] sm:w-[410px] max-w-[430px] h-[520px] max-h-[76vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden backdrop-blur-lg animate-in fade-in slide-in-from-bottom-5 duration-200">
           
           {/* Header */}
           <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white px-4 py-3.5 border-b border-slate-800 flex items-center justify-between shrink-0">

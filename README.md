@@ -128,6 +128,52 @@ The server will bind dynamically to `process.env.PORT` (or default to 3000) on `
 
 ---
 
+## 🐙 How to Manually Sync this App to GitHub
+
+You can sync this repository to your personal or organization GitHub account using either **GitHub CLI** or **standard Git commands**:
+
+### Method 1: Using Standard Git (Recommended)
+
+1. **Create an empty repository on GitHub**:
+   - Go to [github.com/new](https://github.com/new).
+   - Name your repository (e.g., `deroyaltech` or `deroyaltech-systems`).
+   - Leave "Initialize with README" **unchecked** (we already have one).
+   - Click **Create repository**.
+   - Copy the repository URL (e.g., `https://github.com/your-username/deroyaltech.git` or `git@github.com:your-username/deroyaltech.git`).
+
+2. **From your terminal in the project directory, run**:
+   ```bash
+   # 1. Stage and commit all changes (if any are uncommitted)
+   git add -A
+   git commit -m "feat: complete DeRoyalTech enterprise system with mobile optimization and knowledge base"
+
+   # 2. Set the default branch to main
+   git branch -M main
+
+   # 3. Link your remote GitHub repository
+   git remote add origin https://github.com/<YOUR-USERNAME>/<YOUR-REPO-NAME>.git
+   # (If remote origin already exists, use: git remote set-url origin https://github.com/<YOUR-USERNAME>/<YOUR-REPO-NAME>.git)
+
+   # 4. Push your code to GitHub
+   git push -u origin main
+   ```
+
+3. **Subsequent Updates (Ongoing Sync)**:
+   Whenever you make modifications:
+   ```bash
+   git add -A
+   git commit -m "update: improvements"
+   git push origin main
+   ```
+
+### Method 2: Using GitHub CLI (`gh`)
+If you have GitHub CLI installed and authenticated:
+```bash
+gh repo create deroyaltech-systems --public --source=. --remote=origin --push
+```
+
+---
+
 ## 🔒 Security & RBAC Guard
 - Public pages: Homepage, Knowledge Base, and Contact Hub.
 - Internal pages (Services, Projects with MP4, Hardware Store, Workflow Simulator, Estimator) require registered corporate client accounts verified and approved by administrators.
@@ -137,3 +183,4 @@ The server will bind dynamically to `process.env.PORT` (or default to 3000) on `
 
 ## 📄 License
 Apache-2.0 · DeRoyalTech Systems Limited · Accra, Ghana
+

@@ -74,10 +74,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             </p>
 
             {/* Action Row */}
-            <div className="flex flex-wrap items-center gap-3.5 pt-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
               <button
                 onClick={scrollToEstimator}
-                className="px-6 py-3.5 text-sm sm:text-base font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg shadow-sm transition-all flex items-center gap-2 whitespace-nowrap shrink-0"
+                className="w-full sm:w-auto min-h-[48px] px-6 py-3.5 text-sm sm:text-base font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 whitespace-nowrap shrink-0"
               >
                 <span>Calculate Scope ({config.currencySymbol})</span>
                 <ArrowRight className="w-4 h-4" />
@@ -85,7 +85,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
               <button
                 onClick={scrollToProjects}
-                className="px-5 py-3.5 text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-200 bg-orange-50 dark:bg-orange-950/30 hover:bg-orange-100 dark:hover:bg-orange-900/40 border border-orange-200 dark:border-orange-800/60 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap shrink-0"
+                className="w-full sm:w-auto min-h-[48px] px-5 py-3.5 text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-200 bg-orange-50 dark:bg-orange-950/30 hover:bg-orange-100 dark:hover:bg-orange-900/40 border border-orange-200 dark:border-orange-800/60 rounded-xl transition-colors flex items-center justify-center gap-2 whitespace-nowrap shrink-0"
               >
                 <Film className="w-4 h-4 text-orange-500" />
                 <span>Completed Projects & MP4s</span>
@@ -93,7 +93,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
               <button
                 onClick={scrollToPortfolio}
-                className="px-5 py-3.5 text-sm sm:text-base font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors whitespace-nowrap shrink-0"
+                className="w-full sm:w-auto min-h-[48px] px-5 py-3.5 text-sm sm:text-base font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-xl transition-colors flex items-center justify-center whitespace-nowrap shrink-0"
               >
                 Case Studies
               </button>

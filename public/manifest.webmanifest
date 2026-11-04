@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "DeRoyalTech Systems Limited",
+  "short_name": "DeRoyalTech",
+  "description": "Enterprise software engineering, custom CRM architecture, multi-cloud DevOps, and hardware telemetry systems in Accra, Ghana.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": [
+    {
+      "src": "/assets/aistudio/Deroyaltech_Digital_Innovation_Logo_9f10ddb1.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/aistudio/Deroyaltech_Digital_Innovation_Logo_9f10ddb1.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["business", "productivity", "utilities"]
+}

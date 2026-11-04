@@ -19,6 +19,7 @@ import { Footer } from './components/Footer.tsx';
 import { LiveSupportWidget } from './components/chat/LiveSupportWidget.tsx';
 import { ProjectTrackerModal } from './components/tracker/ProjectTrackerModal.tsx';
 import { ServiceRequestModal } from './components/services/ServiceRequestModal.tsx';
+import { MobileBottomNav } from './components/MobileBottomNav.tsx';
 import { CaseStudy, HardwareProduct, QuoteItem, CompletedProject } from './types/index.ts';
 
 function AppContent() {
@@ -110,7 +111,7 @@ function AppContent() {
   const totalQuoteItemsCount = quoteItems.reduce((acc, item) => acc + item.quantity, 0);
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased selection:bg-blue-600 selection:text-white transition-colors duration-200 flex flex-col justify-between">
+    <div className="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased selection:bg-blue-600 selection:text-white transition-colors duration-200 flex flex-col justify-between pb-16 lg:pb-0">
       <div>
         {/* 3-Zone Top Navigation Bar */}
         <Navbar
@@ -258,6 +259,19 @@ function AppContent() {
 
       {/* Service Request & Order Modal */}
       <ServiceRequestModal />
+
+      {/* Thumb-Zone Ergonomic Mobile Bottom Navigation Bar */}
+      <MobileBottomNav
+        darkMode={darkMode}
+        toggleDarkMode={toggleDarkMode}
+        openConsultation={() => {
+          setConsultationScope('');
+          setIsConsultationOpen(true);
+        }}
+        quoteItemCount={totalQuoteItemsCount}
+        openQuoteDrawer={() => setIsQuoteDrawerOpen(true)}
+        openAdmin={() => setIsAdminOpen(true)}
+      />
     </div>
   );
 }
