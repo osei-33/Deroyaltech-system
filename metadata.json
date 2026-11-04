@@ -1,0 +1,6 @@
+{
+  "name": "DeRoyalTech - Enterprise Software, Cloud & Hardware Integration",
+  "description": "DeRoyalTech provides custom website, software, and mobile app development, bespoke CRM solutions, cloud infrastructure management, hardware telemetry workflows, and enterprise computer peripherals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

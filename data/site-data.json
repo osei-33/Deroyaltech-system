@@ -1,0 +1,49 @@
+{
+  "config": {
+    "logoUrl": "/assets/aistudio/Deroyaltech_Digital_Innovation_Logo_9f10ddb1.png",
+    "currencySymbol": "GH₵",
+    "currencyCode": "GHS",
+    "accentTheme": "deroyal-dual",
+    "overlayStyle": "ambient-glass",
+    "heroHeadline": "Full-stack software, custom CRM, and integrated hardware workflows.",
+    "heroSubtitle": "DeRoyalTech engineers web platforms, native mobile applications, bespoke CRM architectures, and multi-cloud infrastructure—seamlessly integrated with industrial sensors, edge gateways, and enterprise computer peripherals to streamline operations.",
+    "contact": {
+      "companyName": "DeRoyalTech Systems Limited",
+      "tagline": "Innovate · Build · Grow",
+      "phonePrimary": "+233 (0) 30 294 8821",
+      "phoneSecondary": "+233 (0) 24 590 1284",
+      "emailGeneral": "info@deroyaltech.com",
+      "emailSales": "sales@deroyaltech.com",
+      "emailSupport": "support@deroyaltech.com",
+      "physicalAddress": "Suite 402, Standard Chartered Building, Airport City & Spintex Tech Corridor",
+      "cityCountry": "Accra, Ghana",
+      "businessHours": "Mon - Fri: 8:00 AM - 6:00 PM GMT (24/7 DevOps Support Standby)",
+      "whatsappNumber": "+233245901284"
+    },
+    "social": {
+      "whatsapp": "https://wa.me/233245901284",
+      "facebook": "https://facebook.com/deroyaltech",
+      "tiktok": "https://tiktok.com/@deroyaltech",
+      "instagram": "https://instagram.com/deroyaltech",
+      "linkedin": "https://linkedin.com/company/deroyaltech"
+    },
+    "enableVideoPreviews": true
+  },
+  "hardware": [],
+  "projects": [],
+  "inquiries": [
+    {
+      "id": "DRT-INQ-9481",
+      "createdAt": "2026-11-03T13:13:02.878Z",
+      "fullName": "Kwame Mensah",
+      "email": "k.mensah@ghanashippers.org",
+      "company": "West Africa Shippers Council",
+      "projectType": "turnkey",
+      "budget": "GH₵ 150,000 - GH₵ 400,000",
+      "timeline": "Within 2-3 months",
+      "scopeNotes": "Warehouse scanner fleet integration and custom CRM pipeline synchronization",
+      "message": "Looking to deploy 45 rugged handheld RFID terminals with real-time cloud data telemetry.",
+      "status": "New"
+    }
+  ]
+}
