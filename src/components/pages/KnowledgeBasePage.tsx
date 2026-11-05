@@ -13,13 +13,14 @@ import {
   MessageSquare, 
   ShieldCheck, 
   ExternalLink, 
-  ArrowRight,
-  CheckCircle2,
-  Cpu,
-  Layers,
-  Coins,
-  Activity,
-  Terminal
+  ArrowRight, 
+  CheckCircle2, 
+  Cpu, 
+  Layers, 
+  Coins, 
+  Activity, 
+  Terminal,
+  X
 } from 'lucide-react';
 import { useSite } from '../../context/SiteContext.tsx';
 import { FAQArticle, FAQCategory } from '../../types/index.ts';
@@ -38,8 +39,8 @@ export const KnowledgeBasePage: React.FC = () => {
   const { 
     faqArticles, 
     voteFAQHelpful, 
-    openChatWithContext,
-    setIsTrackerModalOpen,
+    openChatWithContext, 
+    setIsTrackerModalOpen, 
     navigateTo 
   } = useSite();
 
@@ -52,18 +53,26 @@ export const KnowledgeBasePage: React.FC = () => {
     return faqArticles.filter(a => a.isPublished);
   }, [faqArticles]);
 
+  // Filters available articles based on keyword matching against titles, descriptions (summary), content, and tags
   const filteredArticles = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    const keywords = q ? q.split(/\s+/).filter(Boolean) : [];
+
     return publishedArticles.filter(art => {
       const matchesCategory = selectedCategory === 'all' || art.category === selectedCategory;
-      const q = searchQuery.toLowerCase().trim();
-      if (!q) return matchesCategory;
+      if (keywords.length === 0) return matchesCategory;
 
-      const inTitle = art.title.toLowerCase().includes(q);
-      const inSummary = art.summary.toLowerCase().includes(q);
-      const inContent = art.content.toLowerCase().includes(q);
-      const inTags = art.tags.some(t => t.toLowerCase().includes(q));
+      const title = (art.title || '').toLowerCase();
+      const description = (art.summary || '').toLowerCase();
+      const content = (art.content || '').toLowerCase();
+      const tags = (art.tags || []).map(t => t.toLowerCase()).join(' ');
 
-      return matchesCategory && (inTitle || inSummary || inContent || inTags);
+      // Every keyword token entered by the user must match against title, description, content, or tags
+      const matchesKeywords = keywords.every(kw => 
+        title.includes(kw) || description.includes(kw) || content.includes(kw) || tags.includes(kw)
+      );
+
+      return matchesCategory && matchesKeywords;
     });
   }, [publishedArticles, selectedCategory, searchQuery]);
 
@@ -222,13 +231,42 @@ export const KnowledgeBasePage: React.FC = () => {
 
         {/* Articles Accordion List */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-              {searchQuery ? `Search Results for "${searchQuery}"` : 'Browse Documentation Articles'}
-              <span className="ml-2 text-xs font-normal text-slate-400 font-mono">
-                ({filteredArticles.length} found)
-              </span>
-            </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900/90 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
+                <span>{searchQuery ? `Search Results for "${searchQuery}"` : 'Browse Documentation Articles'}</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+                  {filteredArticles.length} {filteredArticles.length === 1 ? 'article' : 'articles'}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Keyword matching against article titles and descriptions.
+              </p>
+            </div>
+
+            {/* In-Page Keyword Search Input Bar */}
+            <div className="relative w-full sm:w-80 shrink-0">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search titles or descriptions..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-9 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-900 transition-all min-h-[40px]"
+                aria-label="Search articles by keyword against title and description"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear keyword search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-md"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           {filteredArticles.length === 0 ? (
