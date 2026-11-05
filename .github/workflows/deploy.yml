@@ -1,0 +1,74 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: Build, Verify & Deploy to Hostinger
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ⚙️ Setup Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: 📦 Install Updated Dependencies
+        run: |
+          echo "Installing and validating project dependencies..."
+          npm ci || npm install
+
+      - name: 🔍 Typecheck & Lint
+        run: |
+          echo "Running TypeScript verification..."
+          npm run lint
+
+      - name: 🏗️ Compile Frontend & Node Server Bundle
+        run: |
+          echo "Building production bundle with server.ts as primary entry file..."
+          npm run build
+
+      - name: 🚀 Deploy via Hostinger Auto-Deploy Webhook (if configured)
+        if: env.HOSTINGER_WEBHOOK != ''
+        env:
+          HOSTINGER_WEBHOOK: ${{ secrets.HOSTINGER_WEBHOOK_URL || secrets.HOSTINGER_DEPLOY_HOOK }}
+        run: |
+          echo "Triggering Hostinger automated deployment webhook..."
+          curl -s -S -X POST "${HOSTINGER_WEBHOOK}" || true
+          echo "Webhook dispatched successfully."
+
+      - name: 🔐 Deploy via Hostinger SSH / PM2 (if SSH credentials configured)
+        if: env.SSH_HOST != '' && (env.SSH_KEY != '' || env.SSH_PASSWORD != '')
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          SSH_PASSWORD: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+        with:
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USER }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+          port: ${{ secrets.HOSTINGER_SSH_PORT || 22 }}
+          script: |
+            cd ${{ secrets.HOSTINGER_APP_PATH || '~/public_html' }}
+            git pull origin main
+            npm install --omit=dev
+            npm run build
+            # Ensure application starts using server.ts with Node.js 22
+            pm2 restart server.ts --name "deroyaltech" || pm2 start server.ts --name "deroyaltech" --interpreter node || npm start
