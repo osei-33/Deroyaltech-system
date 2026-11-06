@@ -146,6 +146,64 @@ async function startServer() {
     saveData(data);
     res.json({ success: true });
   });
+  app.get("/api/letters", (_req, res) => {
+    const data = loadData();
+    res.json(data.letters || []);
+  });
+  app.post("/api/letters/sync", (req, res) => {
+    const data = loadData();
+    data.letters = req.body.letters || [];
+    saveData(data);
+    res.json({ success: true, count: data.letters.length });
+  });
+  app.get("/api/team", (_req, res) => {
+    const data = loadData();
+    res.json(data.teamMembers || []);
+  });
+  app.post("/api/team/sync", (req, res) => {
+    const data = loadData();
+    data.teamMembers = req.body.teamMembers || [];
+    saveData(data);
+    res.json({ success: true, count: data.teamMembers.length });
+  });
+  app.get("/sitemap.xml", (_req, res) => {
+    const sitemapFile = path.resolve(__dirname, "public", "sitemap.xml");
+    if (fs.existsSync(sitemapFile)) {
+      res.header("Content-Type", "application/xml");
+      return res.sendFile(sitemapFile);
+    }
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://deroyal.tech/</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>https://deroyal.tech/services</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://deroyal.tech/projects</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://deroyal.tech/hardware</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://deroyal.tech/tracker</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>daily</changefreq><priority>0.85</priority></url>
+  <url><loc>https://deroyal.tech/consultation</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>monthly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://deroyal.tech/knowledge-base</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://deroyal.tech/estimator</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>monthly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://deroyal.tech/workflow</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://deroyal.tech/contact</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+</urlset>`;
+    res.header("Content-Type", "application/xml");
+    res.send(xml);
+  });
+  app.get("/robots.txt", (_req, res) => {
+    const robotsFile = path.resolve(__dirname, "public", "robots.txt");
+    if (fs.existsSync(robotsFile)) {
+      res.header("Content-Type", "text/plain");
+      return res.sendFile(robotsFile);
+    }
+    const txt = `User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+
+Sitemap: https://deroyal.tech/sitemap.xml
+`;
+    res.header("Content-Type", "text/plain");
+    res.send(txt);
+  });
   app.delete("/api/inquiries/:id", (req, res) => {
     const data = loadData();
     const id = req.params.id;
@@ -324,64 +382,6 @@ async function startServer() {
     data.emailAlerts = req.body.emailAlerts || [];
     saveData(data);
     res.json({ success: true });
-  });
-  app.get("/api/letters", (_req, res) => {
-    const data = loadData();
-    res.json(data.letters || []);
-  });
-  app.post("/api/letters/sync", (req, res) => {
-    const data = loadData();
-    data.letters = req.body.letters || [];
-    saveData(data);
-    res.json({ success: true, count: data.letters.length });
-  });
-  app.get("/api/team", (_req, res) => {
-    const data = loadData();
-    res.json(data.teamMembers || []);
-  });
-  app.post("/api/team/sync", (req, res) => {
-    const data = loadData();
-    data.teamMembers = req.body.teamMembers || [];
-    saveData(data);
-    res.json({ success: true, count: data.teamMembers.length });
-  });
-  app.get("/sitemap.xml", (_req, res) => {
-    const sitemapFile = path.resolve(__dirname, "public", "sitemap.xml");
-    if (fs.existsSync(sitemapFile)) {
-      res.header("Content-Type", "application/xml");
-      return res.sendFile(sitemapFile);
-    }
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://deroyal.tech/</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>
-  <url><loc>https://deroyal.tech/services</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://deroyal.tech/projects</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://deroyal.tech/hardware</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>weekly</changefreq><priority>0.85</priority></url>
-  <url><loc>https://deroyal.tech/tracker</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>daily</changefreq><priority>0.85</priority></url>
-  <url><loc>https://deroyal.tech/consultation</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>monthly</changefreq><priority>0.85</priority></url>
-  <url><loc>https://deroyal.tech/knowledge-base</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://deroyal.tech/estimator</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>monthly</changefreq><priority>0.75</priority></url>
-  <url><loc>https://deroyal.tech/workflow</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
-  <url><loc>https://deroyal.tech/contact</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
-</urlset>`;
-    res.header("Content-Type", "application/xml");
-    res.send(xml);
-  });
-  app.get("/robots.txt", (_req, res) => {
-    const robotsFile = path.resolve(__dirname, "public", "robots.txt");
-    if (fs.existsSync(robotsFile)) {
-      res.header("Content-Type", "text/plain");
-      return res.sendFile(robotsFile);
-    }
-    const txt = `User-agent: *
-Allow: /
-Disallow: /api/
-Disallow: /admin
-
-Sitemap: https://deroyal.tech/sitemap.xml
-`;
-    res.header("Content-Type", "text/plain");
-    res.send(txt);
   });
   const isProduction = process.env.NODE_ENV === "production";
   if (!isProduction) {
