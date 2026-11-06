@@ -25,15 +25,42 @@ import {
 import { useSite } from '../../context/SiteContext.tsx';
 import { FAQArticle, FAQCategory } from '../../types/index.ts';
 
-const FAQ_CATEGORIES: { id: FAQCategory | 'all'; label: string; icon: any }[] = [
+const FAQ_CATEGORIES: { id: string; label: string; icon: any }[] = [
   { id: 'all', label: 'All Articles', icon: BookOpen },
-  { id: 'Project Tracking & SLAs', label: 'Project Tracking & SLAs', icon: Activity },
+  { id: 'Cloud Infrastructure', label: 'Cloud Infrastructure', icon: Terminal },
+  { id: 'Hardware', label: 'Hardware', icon: Cpu },
+  { id: 'Software Dev', label: 'Software Dev', icon: Layers },
   { id: 'Custom CRM Solutions', label: 'Custom CRM & Telemetry', icon: Layers },
-  { id: 'Hardware & Peripherals', label: 'Hardware & Peripherals', icon: Cpu },
-  { id: 'Billing & Ghana Cedis Pricing', label: 'Pricing in Cedis (GH₵)', icon: Coins },
-  { id: 'Cloud Infrastructure & DevOps', label: 'Cloud Infrastructure', icon: Terminal },
+  { id: 'Project Tracking & SLAs', label: 'Project Tracking & SLAs', icon: Activity },
+  { id: 'Billing & Ghana Cedis Pricing', label: 'Ghana Cedis (GH₵) Pricing', icon: Coins },
   { id: 'General & Onboarding', label: 'Onboarding & Security', icon: ShieldCheck }
 ];
+
+export const isCategoryMatch = (articleCategory: string, selectedCat: string): boolean => {
+  if (selectedCat === 'all') return true;
+  if (selectedCat === 'Cloud Infrastructure') {
+    return articleCategory === 'Cloud Infrastructure' || articleCategory === 'Cloud Infrastructure & DevOps';
+  }
+  if (selectedCat === 'Hardware') {
+    return articleCategory === 'Hardware' || articleCategory === 'Hardware & Peripherals';
+  }
+  if (selectedCat === 'Software Dev') {
+    return articleCategory === 'Software Dev' || articleCategory === 'Web & Mobile Development';
+  }
+  if (selectedCat === 'Custom CRM Solutions') {
+    return articleCategory === 'Custom CRM Solutions';
+  }
+  if (selectedCat === 'Project Tracking & SLAs') {
+    return articleCategory === 'Project Tracking & SLAs';
+  }
+  if (selectedCat === 'Billing & Ghana Cedis Pricing') {
+    return articleCategory === 'Billing & Ghana Cedis Pricing';
+  }
+  if (selectedCat === 'General & Onboarding') {
+    return articleCategory === 'General & Onboarding';
+  }
+  return articleCategory === selectedCat;
+};
 
 export const KnowledgeBasePage: React.FC = () => {
   const { 
@@ -53,14 +80,15 @@ export const KnowledgeBasePage: React.FC = () => {
     return faqArticles.filter(a => a.isPublished);
   }, [faqArticles]);
 
-  // Filters available articles based on keyword matching against titles, descriptions (summary), content, and tags
+  // Filters available articles based on category selection AND keyword matching against titles, descriptions (summary), content, and tags
   const filteredArticles = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     const keywords = q ? q.split(/\s+/).filter(Boolean) : [];
 
     return publishedArticles.filter(art => {
-      const matchesCategory = selectedCategory === 'all' || art.category === selectedCategory;
-      if (keywords.length === 0) return matchesCategory;
+      const matchesCategory = isCategoryMatch(art.category, selectedCategory);
+      if (!matchesCategory) return false;
+      if (keywords.length === 0) return true;
 
       const title = (art.title || '').toLowerCase();
       const description = (art.summary || '').toLowerCase();
@@ -68,11 +96,9 @@ export const KnowledgeBasePage: React.FC = () => {
       const tags = (art.tags || []).map(t => t.toLowerCase()).join(' ');
 
       // Every keyword token entered by the user must match against title, description, content, or tags
-      const matchesKeywords = keywords.every(kw => 
+      return keywords.every(kw => 
         title.includes(kw) || description.includes(kw) || content.includes(kw) || tags.includes(kw)
       );
-
-      return matchesCategory && matchesKeywords;
     });
   }, [publishedArticles, selectedCategory, searchQuery]);
 
@@ -160,7 +186,7 @@ export const KnowledgeBasePage: React.FC = () => {
             const isSelected = selectedCategory === cat.id;
             const count = cat.id === 'all' 
               ? publishedArticles.length 
-              : publishedArticles.filter(a => a.category === cat.id).length;
+              : publishedArticles.filter(a => isCategoryMatch(a.category, cat.id)).length;
 
             return (
               <button
@@ -318,7 +344,14 @@ export const KnowledgeBasePage: React.FC = () => {
                     >
                       <div className="space-y-1.5 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900">
+                          <span 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedCategory(art.category);
+                            }}
+                            className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
+                            title={`Filter articles by ${art.category}`}
+                          >
                             {art.category}
                           </span>
                           <span className="text-[11px] text-slate-400 flex items-center gap-1 font-mono">

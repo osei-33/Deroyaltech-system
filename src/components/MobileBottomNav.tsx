@@ -16,7 +16,8 @@ import {
   ShieldCheck, 
   Settings, 
   User, 
-  ArrowRight
+  ArrowRight,
+  Inbox
 } from 'lucide-react';
 import { useSite } from '../context/SiteContext.tsx';
 import { PageId } from '../types/index.ts';
@@ -123,20 +124,24 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             )}
           </button>
 
-          {/* 4. Track Project (Instant Launch) */}
+          {/* 4. Track Project (Direct Page Route) */}
           <button
             type="button"
-            onClick={() => {
-              setIsMoreMenuOpen(false);
-              setIsTrackerModalOpen(true);
-            }}
-            className="flex flex-col items-center justify-center h-full min-h-[44px] py-1 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all active:scale-95"
+            onClick={() => handleNav('tracker')}
+            className={`flex flex-col items-center justify-center h-full min-h-[44px] py-1 transition-all active:scale-95 ${
+              currentPage === 'tracker' && !isMoreMenuOpen
+                ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400'
+            }`}
           >
             <div className="relative">
-              <Activity className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              <Activity className="w-5 h-5" />
               <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-500" />
             </div>
-            <span className="text-[10px] tracking-tight mt-0.5 text-emerald-600 dark:text-emerald-400 font-semibold">Track</span>
+            <span className="text-[10px] tracking-tight mt-0.5 font-semibold">Track</span>
+            {currentPage === 'tracker' && !isMoreMenuOpen && (
+              <span className="w-1 h-1 rounded-full bg-emerald-600 dark:bg-emerald-400 mt-0.5" />
+            )}
           </button>
 
           {/* 5. More Hub */}
@@ -185,10 +190,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             <div className="grid grid-cols-2 gap-2 mb-4">
               <button
                 type="button"
-                onClick={() => {
-                  setIsMoreMenuOpen(false);
-                  openConsultation();
-                }}
+                onClick={() => handleNav('consultation')}
                 className="p-3 rounded-2xl bg-blue-600 text-white font-semibold text-xs flex flex-col items-start gap-1 shadow-md shadow-blue-600/20 active:scale-[0.98] transition-transform"
               >
                 <PhoneCall className="w-4 h-4" />
@@ -343,17 +345,28 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               )}
 
               {isAdminUser && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMoreMenuOpen(false);
-                    openAdmin();
-                  }}
-                  className="w-full flex items-center justify-center gap-2 p-3 text-xs font-bold text-orange-700 dark:text-orange-300 bg-orange-100 dark:bg-orange-950/40 border border-orange-300 dark:border-orange-800 rounded-xl"
-                >
-                  <Settings className="w-4 h-4 text-orange-600" />
-                  <span>Open Admin Console</span>
-                </button>
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleNav('inquiries')}
+                    className="w-full flex items-center justify-center gap-2 p-3 text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-800 rounded-xl"
+                  >
+                    <Inbox className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <span>View All Client Inquiries</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      openAdmin();
+                    }}
+                    className="w-full flex items-center justify-center gap-2 p-3 text-xs font-bold text-orange-700 dark:text-orange-300 bg-orange-100 dark:bg-orange-950/40 border border-orange-300 dark:border-orange-800 rounded-xl"
+                  >
+                    <Settings className="w-4 h-4 text-orange-600" />
+                    <span>Open Admin Console</span>
+                  </button>
+                </div>
               )}
             </div>
           </div>

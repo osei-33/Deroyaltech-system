@@ -249,6 +249,23 @@ export const Footer: React.FC<FooterProps> = ({ openConsultation, openAdmin }) =
                 </button>
               </li>
               <li>
+                <button onClick={() => navigateTo('tracker')} className="hover:text-white transition-colors text-left flex items-center gap-1 text-emerald-400 font-semibold">
+                  <span>Live Project Tracker</span>
+                </button>
+              </li>
+              <li>
+                <button onClick={() => navigateTo('consultation')} className="hover:text-white transition-colors text-left flex items-center gap-1 text-blue-400 font-semibold">
+                  <span>Schedule Consultation</span>
+                </button>
+              </li>
+              {clientUser?.isAdmin && (
+                <li>
+                  <button onClick={() => navigateTo('inquiries')} className="hover:text-white transition-colors text-left flex items-center gap-1 text-amber-400 font-semibold">
+                    <span>Client Inquiries Dashboard</span>
+                  </button>
+                </li>
+              )}
+              <li>
                 <button onClick={() => navigateTo('contact')} className="hover:text-white transition-colors text-left flex items-center gap-1">
                   <span>Ghana Offices & Contact Hub</span>
                   {!isApproved && <Lock className="w-2.5 h-2.5 text-slate-500" />}

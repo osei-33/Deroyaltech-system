@@ -107,9 +107,23 @@ async function startServer() {
   });
   app.post("/api/site-data", (req, res) => {
     const current = loadData();
-    const updated = { ...current, ...req.body };
+    const updated = {
+      ...current,
+      ...req.body,
+      config: req.body.config ? {
+        ...current.config,
+        ...req.body.config,
+        contact: { ...current.config?.contact || {}, ...req.body.config.contact || {} },
+        social: { ...current.config?.social || {}, ...req.body.config.social || {} },
+        metrics: { ...current.config?.metrics || {}, ...req.body.config.metrics || {} }
+      } : current.config
+    };
     saveData(updated);
     res.json({ success: true, data: updated });
+  });
+  app.get("/api/inquiries", (_req, res) => {
+    const data = loadData();
+    res.json(data.inquiries || []);
   });
   app.post("/api/inquiries", (req, res) => {
     const data = loadData();
@@ -129,6 +143,13 @@ async function startServer() {
     data.inquiries = (data.inquiries || []).map(
       (inq) => inq.id === id ? { ...inq, ...req.body } : inq
     );
+    saveData(data);
+    res.json({ success: true });
+  });
+  app.delete("/api/inquiries/:id", (req, res) => {
+    const data = loadData();
+    const id = req.params.id;
+    data.inquiries = (data.inquiries || []).filter((inq) => inq.id !== id);
     saveData(data);
     res.json({ success: true });
   });

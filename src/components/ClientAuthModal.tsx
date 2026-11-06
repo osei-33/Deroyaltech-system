@@ -17,7 +17,6 @@ import {
   Eye,
   EyeOff,
   Clock,
-  ShieldAlert
 } from 'lucide-react';
 import { useSite } from '../context/SiteContext.tsx';
 
@@ -29,8 +28,6 @@ export const ClientAuthModal: React.FC = () => {
     setAuthModalTab, 
     registerClient, 
     loginClient,
-    adminLogin,
-    instantDemoLogin,
     authRedirectTarget,
     config
   } = useSite();
@@ -51,10 +48,6 @@ export const ClientAuthModal: React.FC = () => {
   });
 
   const [showPassword, setShowPassword] = useState(false);
-  const [isAdminMode, setIsAdminMode] = useState(false);
-  const [adminPasswordInput, setAdminPasswordInput] = useState('');
-  const [adminError, setAdminError] = useState('');
-
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [authFeedback, setAuthFeedback] = useState<{ type: 'error' | 'pending' | 'success'; message: string } | null>(null);
   const [registrationSubmitted, setRegistrationSubmitted] = useState(false);
@@ -150,19 +143,6 @@ export const ClientAuthModal: React.FC = () => {
     }
   };
 
-  const handleAdminLoginSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setAdminError('');
-    const success = adminLogin(adminPasswordInput);
-    if (success) {
-      setIsAuthModalOpen(false);
-      setIsAdminMode(false);
-      setAdminPasswordInput('');
-    } else {
-      setAdminError('Invalid administrator credentials or PIN. (Default: admin)');
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
       <div 
@@ -177,7 +157,6 @@ export const ClientAuthModal: React.FC = () => {
               setIsAuthModalOpen(false);
               setRegistrationSubmitted(false);
               setAuthFeedback(null);
-              setIsAdminMode(false);
             }}
             className="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
           >
@@ -193,15 +172,12 @@ export const ClientAuthModal: React.FC = () => {
                 DeRoyalTech Enterprise Gateway
               </span>
               <h2 className="text-lg font-bold">
-                {isAdminMode 
-                  ? 'Administrator Access Gateway'
-                  : authModalTab === 'register' ? 'Enterprise Client Registration' : 'Client Partner Sign In'
-                }
+                {authModalTab === 'register' ? 'Enterprise Client Registration' : 'Client Partner Sign In'}
               </h2>
             </div>
           </div>
 
-          {!isAdminMode && authRedirectTarget && (
+          {authRedirectTarget && (
             <div className="mt-3 p-2.5 bg-blue-950/60 border border-blue-800/80 rounded-lg text-xs text-blue-200 flex items-center gap-2">
               <Lock className="w-4 h-4 text-blue-400 shrink-0" />
               <span>
@@ -211,55 +187,7 @@ export const ClientAuthModal: React.FC = () => {
           )}
         </div>
 
-        {/* Admin Login Mode */}
-        {isAdminMode ? (
-          <div className="p-6 space-y-4">
-            <div className="p-3.5 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/60 rounded-xl text-xs text-orange-900 dark:text-orange-200">
-              <span className="font-bold block mb-1">Administrative Privileges Required:</span>
-              Enter master administrator password to access the DeRoyalTech CMS Portal and manage user approvals, service pricing, and inquiries.
-            </div>
-
-            {adminError && (
-              <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{adminError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Administrator Password or Security PIN
-                </label>
-                <input
-                  type="password"
-                  required
-                  autoFocus
-                  value={adminPasswordInput}
-                  onChange={(e) => setAdminPasswordInput(e.target.value)}
-                  placeholder="Enter admin password (default: admin)"
-                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-mono"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAdminMode(false)}
-                  className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 underline"
-                >
-                  Return to Client Sign In
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold rounded-lg shadow-sm"
-                >
-                  Unlock Admin CMS
-                </button>
-              </div>
-            </form>
-          </div>
-        ) : registrationSubmitted ? (
+        {registrationSubmitted ? (
           /* Registration Pending Approval State */
           <div className="p-6 sm:p-8 space-y-5 text-center">
             <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 mx-auto flex items-center justify-center">
@@ -281,23 +209,14 @@ export const ClientAuthModal: React.FC = () => {
               <div className="text-slate-500">Verification Status: <span className="text-amber-600 dark:text-amber-400 font-bold">Pending Review</span></div>
             </div>
 
-            <div className="pt-2 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={instantDemoLogin}
-                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Evaluate Now with Approved Partner Demo (Kwame Asante - CTO)</span>
-              </button>
-
+            <div className="pt-3">
               <button
                 type="button"
                 onClick={() => {
                   setRegistrationSubmitted(false);
                   setIsAuthModalOpen(false);
                 }}
-                className="w-full py-2 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-sm transition-colors"
               >
                 Close and Return to Homepage
               </button>
@@ -554,30 +473,6 @@ export const ClientAuthModal: React.FC = () => {
                   </button>
                 </form>
               )}
-
-              {/* 1-Click Approved Demo Evaluation Button */}
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
-                <button
-                  type="button"
-                  onClick={instantDemoLogin}
-                  className="w-full py-2.5 px-4 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors"
-                >
-                  <Sparkles className="w-4 h-4 text-emerald-500" />
-                  <span>Instant Approved Partner Demo (Kwame Asante - CTO)</span>
-                </button>
-
-                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                  <span>DeRoyalTech Engineering Team?</span>
-                  <button
-                    type="button"
-                    onClick={() => setIsAdminMode(true)}
-                    className="text-orange-600 dark:text-orange-400 font-semibold hover:underline flex items-center gap-1"
-                  >
-                    <ShieldAlert className="w-3.5 h-3.5" />
-                    <span>Admin Master Login</span>
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         )}

@@ -618,9 +618,22 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '') as PageId;
-      if (hash && ['home', 'services', 'workflow', 'projects', 'hardware', 'estimator', 'contact', 'knowledge'].includes(hash)) {
-        if (hash === 'home' || hash === 'knowledge' || (clientUser && clientUser.status === 'approved')) {
+      const validPages: PageId[] = [
+        'home', 'services', 'workflow', 'projects', 'hardware', 
+        'estimator', 'contact', 'knowledge', 'tracker', 'consultation', 'inquiries'
+      ];
+      if (hash && validPages.includes(hash)) {
+        if (
+          hash === 'home' || 
+          hash === 'knowledge' || 
+          hash === 'tracker' || 
+          hash === 'consultation' ||
+          (hash === 'inquiries' && clientUser?.isAdmin) ||
+          (clientUser && clientUser.status === 'approved')
+        ) {
           setCurrentPage(hash);
+        } else if (hash === 'inquiries') {
+          setIsAdminOpen(true);
         } else {
           setAuthRedirectTarget(hash);
           setIsAuthModalOpen(true);
@@ -638,11 +651,24 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Page Navigation with Client Gating Guard
   const navigateTo = (page: PageId): boolean => {
-    if (page === 'home' || page === 'knowledge') {
+    // Publicly accessible pages without client gate
+    if (page === 'home' || page === 'knowledge' || page === 'tracker' || page === 'consultation') {
       setCurrentPage(page);
       window.location.hash = page;
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return true;
+    }
+
+    // Admin-only inquiries page
+    if (page === 'inquiries') {
+      if (clientUser?.isAdmin) {
+        setCurrentPage('inquiries');
+        window.location.hash = 'inquiries';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return true;
+      }
+      setIsAdminOpen(true);
+      return false;
     }
 
     // Gated check: client must exist AND be approved by admin!
@@ -1839,9 +1865,68 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }).catch(() => {});
   };
 
+  const syncTrackedProjectToCompleted = (p: TrackedProject) => {
+    setCompletedProjects(prev => {
+      const existingIndex = prev.findIndex(item => 
+        item.id === `prj-comp-${p.projectId.toLowerCase()}` || 
+        item.title.toLowerCase() === p.title.toLowerCase()
+      );
+
+      const mappedCategory = (
+        p.serviceCategory === 'software' ? 'web' :
+        p.serviceCategory === 'mobile' ? 'mobile' :
+        p.serviceCategory === 'crm' ? 'crm' :
+        p.serviceCategory === 'cloud' ? 'cloud' : 'hardware'
+      ) as CompletedProject['category'];
+
+      const compItem: CompletedProject = {
+        id: `prj-comp-${p.projectId.toLowerCase()}`,
+        title: p.title,
+        client: p.clientCompany || p.clientName,
+        industry: p.serviceCategory === 'hardware-integration' ? 'IoT & Industrial Hardware' : 'Enterprise Technology',
+        category: mappedCategory,
+        completionDate: p.completedDate || new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+        summary: `Successfully delivered by DeRoyalTech engineering team led by ${p.leadEngineer || 'Senior Solutions Architect'}. Verified production deployment with live client handoff.`,
+        liveUrl: p.liveUrl || 'https://client-preview.deroyaltech.com',
+        deliverables: p.milestones && p.milestones.length > 0 
+          ? p.milestones.map(m => m.title).slice(0, 4) 
+          : ['Production Architecture', 'QA Testing', 'Cloud Deployment'],
+        metrics: [
+          { label: 'Completion Status', value: '100% Verified' },
+          { label: 'Lead Engineer', value: p.leadEngineer || 'Senior Architect' }
+        ],
+        techStack: p.assignedTeam && p.assignedTeam.length > 0 ? p.assignedTeam : ['React', 'TypeScript', 'Node.js', 'PostgreSQL'],
+        verifiedDeliveryBadge: 'Production Live in Ghana',
+        clientCountry: 'Ghana'
+      };
+
+      let next: CompletedProject[];
+      if (existingIndex >= 0) {
+        next = [...prev];
+        next[existingIndex] = { ...prev[existingIndex], ...compItem };
+      } else {
+        next = [compItem, ...prev];
+      }
+
+      localStorage.setItem('drt_completed_projects', JSON.stringify(next));
+      syncToServer({ projects: next });
+      return next;
+    });
+    notifyLiveSync();
+  };
+
   const updateTrackedProject = (projectId: string, updates: Partial<TrackedProject>) => {
+    let updatedProject: TrackedProject | undefined;
+
     setTrackedProjects(prev => {
-      const next = prev.map(p => p.projectId === projectId ? { ...p, ...updates } : p);
+      const next = prev.map(p => {
+        if (p.projectId === projectId) {
+          const merged = { ...p, ...updates };
+          updatedProject = merged;
+          return merged;
+        }
+        return p;
+      });
       localStorage.setItem('drt_tracked_projects', JSON.stringify(next));
       syncToServer({ trackedProjects: next });
       return next;
@@ -1858,12 +1943,20 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
     }
 
+    // After admin marked project completed, it automatically appears to every client in Completed Projects!
+    if (updates.stage === 'completed' || updates.progressPercent === 100) {
+      if (updatedProject) {
+        syncTrackedProjectToCompleted({ ...updatedProject, stage: 'completed', progressPercent: 100 });
+      }
+    }
+
     notifyLiveSync();
   };
 
   const updateProjectMilestone = (projectId: string, milestoneId: string, status: 'completed' | 'in_progress' | 'pending') => {
     let milestoneTitle = '';
     let calculatedPercent = 0;
+    let targetProject: TrackedProject | undefined;
 
     setTrackedProjects(prev => {
       const next = prev.map(project => {
@@ -1885,11 +1978,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const inProgressCount = updatedMilestones.filter(m => m.status === 'in_progress').length;
         calculatedPercent = total > 0 ? Math.min(100, Math.round(((completedCount + inProgressCount * 0.5) / total) * 100)) : project.progressPercent;
 
-        return {
+        const updatedProj = {
           ...project,
           milestones: updatedMilestones,
-          progressPercent: calculatedPercent
+          progressPercent: calculatedPercent,
+          stage: calculatedPercent === 100 ? ('completed' as const) : project.stage,
+          stageLabel: calculatedPercent === 100 ? 'Completed & Handed Over' : project.stageLabel
         };
+        targetProject = updatedProj;
+        return updatedProj;
       });
 
       localStorage.setItem('drt_tracked_projects', JSON.stringify(next));
@@ -1903,6 +2000,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       progressPercent: calculatedPercent,
       updateSummary: `Milestone "${milestoneTitle || 'Deliverable'}" is now marked as ${status.toUpperCase().replace('_', ' ')}. Total progress: ${calculatedPercent}%.`
     });
+
+    // After admin marked milestone to complete the project, it appears to every client
+    if (calculatedPercent === 100 && targetProject) {
+      syncTrackedProjectToCompleted(targetProject);
+    }
 
     notifyLiveSync();
   };

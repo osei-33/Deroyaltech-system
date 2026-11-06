@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Settings, 
@@ -85,6 +85,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
     updateSocial,
     updateProjectMetrics,
     formatPrice,
+    navigateTo,
     // Services
     services,
     addService,
@@ -185,6 +186,48 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
     hardwareNodesDeployed: config.metrics?.hardwareNodesDeployed ?? 2400
   });
 
+  // Re-sync local form states whenever config updates or modal opens
+  useEffect(() => {
+    if (config) {
+      setBrandingForm({
+        logoUrl: config.logoUrl || '',
+        companyName: config.contact?.companyName || '',
+        tagline: config.contact?.tagline || '',
+        heroHeadline: config.heroHeadline || '',
+        heroSubtitle: config.heroSubtitle || ''
+      });
+      setContactForm({
+        phonePrimary: config.contact?.phonePrimary || '',
+        phoneSecondary: config.contact?.phoneSecondary || '',
+        whatsappNumber: config.contact?.whatsappNumber || '',
+        emailGeneral: config.contact?.emailGeneral || '',
+        emailSales: config.contact?.emailSales || '',
+        emailSupport: config.contact?.emailSupport || '',
+        physicalAddress: config.contact?.physicalAddress || '',
+        cityCountry: config.contact?.cityCountry || '',
+        businessHours: config.contact?.businessHours || ''
+      });
+      setSocialForm({
+        whatsapp: config.social?.whatsapp || '+233245901284',
+        facebook: config.social?.facebook || 'https://facebook.com/deroyaltech',
+        tiktok: config.social?.tiktok || 'https://tiktok.com/@deroyaltech',
+        instagram: config.social?.instagram || 'https://instagram.com/deroyaltech',
+        linkedin: config.social?.linkedin || 'https://linkedin.com/company/deroyaltech'
+      });
+      setCurrencyForm({
+        currencySymbol: config.currencySymbol || 'GH₵',
+        currencyCode: config.currencyCode || 'GHS'
+      });
+      setMetricsForm({
+        projectsCompleted: config.metrics?.projectsCompleted ?? 86,
+        clientSatisfactionRate: config.metrics?.clientSatisfactionRate ?? 99.4,
+        linesOfCodeWritten: config.metrics?.linesOfCodeWritten ?? '1.4M+',
+        uptimeSla: config.metrics?.uptimeSla ?? 99.99,
+        hardwareNodesDeployed: config.metrics?.hardwareNodesDeployed ?? 2400
+      });
+    }
+  }, [config, isOpen]);
+
   // Quick price map for hardware & services
   const [quickServicePriceMap, setQuickServicePriceMap] = useState<Record<string, number>>({});
   const [quickHardwarePriceMap, setQuickHardwarePriceMap] = useState<Record<string, number>>({});
@@ -281,11 +324,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
     updateConfig({
       logoUrl: brandingForm.logoUrl,
       heroHeadline: brandingForm.heroHeadline,
-      heroSubtitle: brandingForm.heroSubtitle
-    });
-    updateContact({
-      companyName: brandingForm.companyName,
-      tagline: brandingForm.tagline
+      heroSubtitle: brandingForm.heroSubtitle,
+      contact: {
+        ...config.contact,
+        companyName: brandingForm.companyName,
+        tagline: brandingForm.tagline
+      }
     });
     triggerToast('Brand configuration updated successfully!');
   };
@@ -1027,10 +1071,8 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
                           <button
                             type="button"
                             onClick={() => {
-                              if (confirm(`Delete service "${service.title}"?`)) {
-                                deleteService(service.id);
-                                triggerToast('Service deleted.');
-                              }
+                              deleteService(service.id);
+                              triggerToast(`Service "${service.title}" deleted.`);
                             }}
                             className="p-1.5 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                             title="Delete Service"
@@ -1297,10 +1339,8 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
                         <button
                           type="button"
                           onClick={() => {
-                            if (confirm(`Remove testimonial from ${item.clientName}?`)) {
-                              deleteTestimonial(item.id);
-                              triggerToast('Testimonial removed.');
-                            }
+                            deleteTestimonial(item.id);
+                            triggerToast(`Testimonial from ${item.clientName} removed.`);
                           }}
                           className="p-1.5 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                           title="Delete Testimonial"
@@ -1655,10 +1695,8 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
                             <button
                               type="button"
                               onClick={() => {
-                                if (confirm('Delete this booking record?')) {
-                                  deleteBooking(booking.id);
-                                  triggerToast('Booking record deleted.');
-                                }
+                                deleteBooking(booking.id);
+                                triggerToast('Booking record deleted.');
                               }}
                               className="p-1 text-slate-400 hover:text-rose-500 transition-colors"
                               title="Delete Booking"
@@ -1796,10 +1834,8 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
                           <button
                             type="button"
                             onClick={() => {
-                              if (confirm(`Delete account for ${user.fullName}?`)) {
-                                deleteClientUser(user.id);
-                                triggerToast('User account deleted.');
-                              }
+                              deleteClientUser(user.id);
+                              triggerToast(`Account for ${user.fullName} deleted.`);
                             }}
                             className="p-1.5 text-slate-400 hover:text-rose-500 transition-colors"
                             title="Delete User"
@@ -1817,7 +1853,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
             {/* TAB: DIRECT INQUIRIES */}
             {activeTab === 'inquiries' && (
               <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
                   <div>
                     <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                       <Inbox className="w-4 h-4 text-blue-500" />
@@ -1827,9 +1863,22 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
                       Messages received from the Contact page and custom hardware RFQ submissions.
                     </p>
                   </div>
-                  <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-1 rounded border border-blue-200 dark:border-blue-900">
-                    {inquiries.length} Inquiries Logged
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        navigateTo('inquiries');
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Open Full Inquiries Page</span>
+                    </button>
+                    <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-1 rounded border border-blue-200 dark:border-blue-900">
+                      {inquiries.length} Inquiries
+                    </span>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -1866,10 +1915,8 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
                             <button
                               type="button"
                               onClick={() => {
-                                if (confirm('Delete this inquiry?')) {
-                                  deleteInquiry(inq.id);
-                                  triggerToast('Inquiry deleted.');
-                                }
+                                deleteInquiry(inq.id);
+                                triggerToast(`Inquiry ${inq.id} deleted.`);
                               }}
                               className="p-1 text-slate-400 hover:text-rose-500 transition-colors"
                               title="Delete Inquiry"
@@ -2194,10 +2241,8 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
                           <button
                             type="button"
                             onClick={() => {
-                              if (confirm(`Delete product ${product.name}?`)) {
-                                deleteProduct(product.id);
-                                triggerToast('Product deleted.');
-                              }
+                              deleteProduct(product.id);
+                              triggerToast(`Product ${product.name} deleted.`);
                             }}
                             className="p-1.5 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                             title="Delete Hardware"
@@ -2464,10 +2509,8 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
                         <button
                           type="button"
                           onClick={() => {
-                            if (confirm(`Delete project ${project.title}?`)) {
-                              deleteCompletedProject(project.id);
-                              triggerToast('Project deleted.');
-                            }
+                            deleteCompletedProject(project.id);
+                            triggerToast(`Project ${project.title} deleted.`);
                           }}
                           className="p-1.5 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                           title="Delete Project"

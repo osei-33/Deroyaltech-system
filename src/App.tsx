@@ -9,6 +9,9 @@ import { HardwarePage } from './components/pages/HardwarePage.tsx';
 import { EstimatorPage } from './components/pages/EstimatorPage.tsx';
 import { ContactPage } from './components/pages/ContactPage.tsx';
 import { KnowledgeBasePage } from './components/pages/KnowledgeBasePage.tsx';
+import { TrackProjectPage } from './components/pages/TrackProjectPage.tsx';
+import { ConsultationPage } from './components/pages/ConsultationPage.tsx';
+import { AdminInquiriesPage } from './components/pages/AdminInquiriesPage.tsx';
 import { VideoTheaterModal } from './components/VideoTheaterModal.tsx';
 import { CaseStudyModal } from './components/CaseStudyModal.tsx';
 import { HardwareQuoteDrawer } from './components/HardwareQuoteDrawer.tsx';
@@ -20,6 +23,7 @@ import { LiveSupportWidget } from './components/chat/LiveSupportWidget.tsx';
 import { ProjectTrackerModal } from './components/tracker/ProjectTrackerModal.tsx';
 import { ServiceRequestModal } from './components/services/ServiceRequestModal.tsx';
 import { MobileBottomNav } from './components/MobileBottomNav.tsx';
+import { ScrollToTopButton } from './components/common/ScrollToTopButton.tsx';
 import { CaseStudy, HardwareProduct, QuoteItem, CompletedProject } from './types/index.ts';
 
 function AppContent() {
@@ -27,6 +31,7 @@ function AppContent() {
     formatPrice, 
     config, 
     currentPage, 
+    navigateTo,
     isAuthModalOpen, 
     setIsAuthModalOpen,
     authModalTab,
@@ -117,10 +122,7 @@ function AppContent() {
         <Navbar
           darkMode={darkMode}
           toggleDarkMode={toggleDarkMode}
-          openConsultation={() => {
-            setConsultationScope('');
-            setIsConsultationOpen(true);
-          }}
+          openConsultation={() => navigateTo('consultation')}
           quoteItemCount={totalQuoteItemsCount}
           openQuoteDrawer={() => setIsQuoteDrawerOpen(true)}
           openAdmin={() => setIsAdminOpen(true)}
@@ -130,39 +132,27 @@ function AppContent() {
         <main>
           {currentPage === 'home' && (
             <HomePage
-              openConsultation={(scope) => {
-                setConsultationScope(scope || '');
-                setIsConsultationOpen(true);
-              }}
+              openConsultation={() => navigateTo('consultation')}
               onOpenVideoProject={(project) => setSelectedVideoProject(project)}
             />
           )}
 
           {currentPage === 'services' && (
             <ServicesPage
-              openConsultation={(scope) => {
-                setConsultationScope(scope || '');
-                setIsConsultationOpen(true);
-              }}
+              openConsultation={() => navigateTo('consultation')}
             />
           )}
 
           {currentPage === 'workflow' && (
             <WorkflowPage
-              openConsultation={(scope) => {
-                setConsultationScope(scope || '');
-                setIsConsultationOpen(true);
-              }}
+              openConsultation={() => navigateTo('consultation')}
             />
           )}
 
           {currentPage === 'projects' && (
             <ProjectsPage
               onOpenVideo={(project) => setSelectedVideoProject(project)}
-              openConsultation={(scope) => {
-                setConsultationScope(scope || '');
-                setIsConsultationOpen(true);
-              }}
+              openConsultation={() => navigateTo('consultation')}
             />
           )}
 
@@ -171,10 +161,7 @@ function AppContent() {
               onAddToCart={handleAddToCart}
               openQuoteDrawer={() => setIsQuoteDrawerOpen(true)}
               quoteItemCount={totalQuoteItemsCount}
-              openConsultation={(scope) => {
-                setConsultationScope(scope || '');
-                setIsConsultationOpen(true);
-              }}
+              openConsultation={() => navigateTo('consultation')}
             />
           )}
 
@@ -191,15 +178,24 @@ function AppContent() {
           {currentPage === 'knowledge' && (
             <KnowledgeBasePage />
           )}
+
+          {currentPage === 'tracker' && (
+            <TrackProjectPage />
+          )}
+
+          {currentPage === 'consultation' && (
+            <ConsultationPage />
+          )}
+
+          {currentPage === 'inquiries' && (
+            <AdminInquiriesPage />
+          )}
         </main>
       </div>
 
       {/* Corporate Footer with Social Channels & Multi-page Directory */}
       <Footer
-        openConsultation={() => {
-          setConsultationScope('');
-          setIsConsultationOpen(true);
-        }}
+        openConsultation={() => navigateTo('consultation')}
         openAdmin={() => setIsAdminOpen(true)}
       />
 
@@ -254,6 +250,9 @@ function AppContent() {
       {/* Real-time Customer Live Chat Support Widget */}
       <LiveSupportWidget />
 
+      {/* Floating Scroll to Top Quick Navigation Button */}
+      <ScrollToTopButton />
+
       {/* Project Status Tracker Modal */}
       <ProjectTrackerModal />
 
@@ -264,10 +263,7 @@ function AppContent() {
       <MobileBottomNav
         darkMode={darkMode}
         toggleDarkMode={toggleDarkMode}
-        openConsultation={() => {
-          setConsultationScope('');
-          setIsConsultationOpen(true);
-        }}
+        openConsultation={() => navigateTo('consultation')}
         quoteItemCount={totalQuoteItemsCount}
         openQuoteDrawer={() => setIsQuoteDrawerOpen(true)}
         openAdmin={() => setIsAdminOpen(true)}

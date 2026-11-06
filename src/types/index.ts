@@ -167,7 +167,18 @@ export interface ConsultationBooking {
   adminNotes?: string;
 }
 
-export type PageId = 'home' | 'services' | 'workflow' | 'projects' | 'hardware' | 'estimator' | 'contact' | 'knowledge';
+export type PageId = 
+  | 'home' 
+  | 'services' 
+  | 'workflow' 
+  | 'projects' 
+  | 'hardware' 
+  | 'estimator' 
+  | 'contact' 
+  | 'knowledge' 
+  | 'tracker' 
+  | 'consultation' 
+  | 'inquiries';
 
 export interface SiteConfig {
   logoUrl: string;
@@ -359,9 +370,12 @@ export interface ProjectEmailAlert {
 export type FAQCategory = 
   | 'General & Onboarding'
   | 'Web & Mobile Development'
+  | 'Software Dev'
   | 'Custom CRM Solutions'
   | 'Cloud Infrastructure & DevOps'
+  | 'Cloud Infrastructure'
   | 'Hardware & Peripherals'
+  | 'Hardware'
   | 'Billing & Ghana Cedis Pricing'
   | 'Project Tracking & SLAs';
 

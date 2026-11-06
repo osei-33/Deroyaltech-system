@@ -48,20 +48,23 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const isApproved = clientUser && clientUser.status === 'approved' && clientUser.isVerified;
+  const isPending = clientUser && clientUser.status === 'pending';
+  const isAdminUser = clientUser && clientUser.isAdmin === true;
+
   const navLinks: { label: string; page: PageId; gated?: boolean }[] = [
     { label: 'Home', page: 'home' },
     { label: 'Services', page: 'services', gated: true },
-    { label: 'Workflow Hub', page: 'workflow', gated: true },
+    { label: 'Workflow', page: 'workflow', gated: true },
     { label: 'Projects & MP4', page: 'projects', gated: true },
     { label: 'Hardware Store (GH₵)', page: 'hardware', gated: true },
     { label: 'Estimator', page: 'estimator', gated: true },
     { label: 'Knowledge Base', page: 'knowledge' },
-    { label: 'Contact Hub', page: 'contact', gated: true },
+    { label: 'Track Project', page: 'tracker' },
+    { label: 'Consultation', page: 'consultation' },
+    ...(isAdminUser ? [{ label: 'Inquiries', page: 'inquiries' as PageId }] : []),
+    { label: 'Contact', page: 'contact', gated: true },
   ];
-
-  const isApproved = clientUser && clientUser.status === 'approved' && clientUser.isVerified;
-  const isPending = clientUser && clientUser.status === 'pending';
-  const isAdminUser = clientUser && clientUser.isAdmin === true;
 
   const handleNavClick = (page: PageId) => {
     navigateTo(page);
@@ -202,9 +205,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               {darkMode ? <Sun className="w-5 h-5 sm:w-4 sm:h-4" /> : <Moon className="w-5 h-5 sm:w-4 sm:h-4" />}
             </button>
 
-            {/* Track Project Status Trigger */}
+            {/* Track Project Status Trigger (Full Page) */}
             <button
-              onClick={() => setIsTrackerModalOpen(true)}
+              onClick={() => handleNavClick('tracker')}
               title="Track Project Status with Project ID"
               aria-label="Track Project Status"
               className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800 rounded-md transition-colors whitespace-nowrap"
@@ -213,9 +216,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Track Project</span>
             </button>
 
-            {/* Consultation CTA */}
+            {/* Consultation CTA (Full Page) */}
             <button
-              onClick={openConsultation}
+              onClick={() => handleNavClick('consultation')}
               className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm transition-colors whitespace-nowrap shrink-0"
             >
               <span>Consultation</span>
@@ -317,10 +320,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Track Project in Mobile Drawer */}
             <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                setIsTrackerModalOpen(true);
-              }}
+              onClick={() => handleNavClick('tracker')}
               className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-lg text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800 transition-colors"
             >
               <span className="flex items-center gap-2">
@@ -331,10 +331,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                openConsultation();
-              }}
+              onClick={() => handleNavClick('consultation')}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-slate-900 dark:bg-slate-800 rounded-lg"
             >
               <span>Schedule Architecture Consultation</span>
