@@ -21,6 +21,8 @@ import {
 import { useSite } from '../../context/SiteContext.tsx';
 import { HeroSection } from '../HeroSection.tsx';
 import { ClientTestimonialsSlider } from '../ClientTestimonialsSlider.tsx';
+import { CloudDashboardCard } from '../home/CloudDashboardCard.tsx';
+import { TeamShowcaseSection } from '../home/TeamShowcaseSection.tsx';
 import { CompletedProject, HardwareProduct } from '../../types/index.ts';
 
 interface HomePageProps {
@@ -150,6 +152,11 @@ export const HomePage: React.FC<HomePageProps> = ({ openConsultation, onOpenVide
           </div>
         </div>
       </div>
+
+      {/* Cloud Infrastructure & Hardware Telemetry Real-Time Dashboard Card */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <CloudDashboardCard />
+      </section>
 
       {/* 3. Core Enterprise Services Preview with Pricing in GH₵ */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -485,6 +492,9 @@ export const HomePage: React.FC<HomePageProps> = ({ openConsultation, onOpenVide
 
       {/* 7. Client Testimonial Section with Smooth Sliding Animation */}
       <ClientTestimonialsSlider openConsultation={openConsultation} />
+
+      {/* Core Engineering & Systems Leadership Directorate */}
+      <TeamShowcaseSection />
 
       {/* 8. Corporate Office & Direct Contacts Callout */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

@@ -1,0 +1,8 @@
+# DeRoyalTech Systems Robots Configuration
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+
+# Canonical XML Sitemap
+Sitemap: https://deroyal.tech/sitemap.xml

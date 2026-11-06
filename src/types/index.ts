@@ -134,6 +134,14 @@ export interface ProjectMetricsConfig {
   hardwareNodesDeployed: number; // e.g. 2400
 }
 
+export interface AdminDeviceSession {
+  deviceId: string;
+  deviceName: string;
+  platform: string;
+  lastActive: string;
+  ipMock?: string;
+}
+
 export interface ClientUser {
   id: string;
   fullName: string;
@@ -148,6 +156,7 @@ export interface ClientUser {
   isAdmin?: boolean;
   approvedAt?: string;
   approvedBy?: string;
+  activeSessions?: AdminDeviceSession[]; // Tracks concurrent active devices (max 2 for admin users)
 }
 
 export interface ConsultationBooking {
@@ -396,4 +405,52 @@ export interface FAQArticle {
   updatedAt: string;
   author: string;
 }
+
+// ==================== OFFICIAL COMPANY LETTERS & CORRESPONDENCE ====================
+export type LetterTemplateType = 
+  | 'proposal' 
+  | 'quotation' 
+  | 'agreement' 
+  | 'sla' 
+  | 'demand' 
+  | 'custom';
+
+export interface OfficialLetter {
+  id: string;
+  referenceNumber: string; // e.g. "DRT/LTR/2026/042"
+  date: string;
+  recipientCompany: string;
+  recipientName: string;
+  recipientTitle?: string;
+  recipientAddress?: string;
+  recipientEmail?: string;
+  recipientPhone?: string;
+  subject: string;
+  templateType: LetterTemplateType;
+  salutation: string;
+  content: string;
+  signatoryName: string;
+  signatoryRole: string;
+  signatoryPhone?: string;
+  status: 'draft' | 'issued' | 'sent' | 'archived';
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ==================== CORE ENGINEERING TEAM ====================
+export interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
+  department: string;
+  bio: string;
+  avatarUrl: string;
+  email: string;
+  phone?: string;
+  linkedinUrl?: string;
+  githubUrl?: string;
+  displayOrder: number;
+  isActive: boolean;
+}
+
 

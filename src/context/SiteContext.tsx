@@ -18,7 +18,10 @@ import {
   ProjectMilestone,
   ProjectLogEntry,
   FAQArticle,
-  ProjectEmailAlert
+  ProjectEmailAlert,
+  OfficialLetter,
+  TeamMember,
+  AdminDeviceSession
 } from '../types/index.ts';
 import { 
   DEFAULT_SITE_CONFIG, 
@@ -31,7 +34,9 @@ import {
   DEFAULT_SERVICE_REQUESTS,
   DEFAULT_TRACKED_PROJECTS,
   DEFAULT_FAQ_ARTICLES,
-  DEFAULT_EMAIL_ALERTS
+  DEFAULT_EMAIL_ALERTS,
+  DEFAULT_LETTERS,
+  DEFAULT_TEAM
 } from '../data/companyData.ts';
 
 interface AuthResponse {
@@ -50,6 +55,8 @@ export type AdminPortalTab =
   | 'support'     // Live Support Tab
   | 'tracker'     // Service Requests & Project Tracker Tab
   | 'knowledge'   // Knowledge Base & FAQ Management Tab
+  | 'letters'     // Official Letters & Proposals Tab
+  | 'team'        // Core Engineering Team Directory Tab
   | 'hardware' 
   | 'projects' 
   | 'branding' 
@@ -209,6 +216,22 @@ interface SiteContextType {
   authModalTab: 'login' | 'register';
   setAuthModalTab: (tab: 'login' | 'register') => void;
   authRedirectTarget: PageId | null;
+
+  // Official Company Letters
+  letters: OfficialLetter[];
+  addLetter: (letter: Omit<OfficialLetter, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  updateLetter: (id: string, updates: Partial<OfficialLetter>) => void;
+  deleteLetter: (id: string) => void;
+
+  // Core Engineering Team
+  teamMembers: TeamMember[];
+  addTeamMember: (member: Omit<TeamMember, 'id'>) => string;
+  updateTeamMember: (id: string, updates: Partial<TeamMember>) => void;
+  deleteTeamMember: (id: string) => void;
+  resetTeamToDefault: () => void;
+
+  // Admin Device Limit
+  revokeAdminSession: (userId: string, deviceId: string) => void;
 
   // Admin CMS Portal
   isAdminOpen: boolean;
@@ -549,6 +572,71 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return DEFAULT_FAQ_ARTICLES;
   });
 
+  // Official Company Letters State
+  const [letters, setLetters] = useState<OfficialLetter[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('drt_letters');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return DEFAULT_LETTERS;
+  });
+
+  // Core Engineering Team Directory State
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('drt_team_members');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return DEFAULT_TEAM;
+  });
+
+  // Device Session Fingerprint (Admin 2-device concurrency limit)
+  const getCurrentDeviceSession = (): AdminDeviceSession => {
+    let devId = 'dev_default';
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('drt_device_id');
+      if (stored) {
+        devId = stored;
+      } else {
+        devId = `dev_${Math.random().toString(36).substring(2, 9)}`;
+        localStorage.setItem('drt_device_id', devId);
+      }
+    }
+
+    let deviceName = 'Command Workstation';
+    let platform = 'Web';
+    if (typeof navigator !== 'undefined') {
+      const ua = navigator.userAgent;
+      platform = navigator.platform || 'Web';
+      if (/iPad|iPhone|iPod/.test(ua)) deviceName = 'Apple Mobile Terminal';
+      else if (/Android/.test(ua)) deviceName = 'Android Engineering Terminal';
+      else if (/Macintosh/.test(ua)) deviceName = 'Apple Mac Workstation';
+      else if (/Windows/.test(ua)) deviceName = 'Windows Engineering PC';
+      else if (/Linux/.test(ua)) deviceName = 'Linux DevOps Station';
+      else deviceName = 'Web Browser Terminal';
+    }
+
+    return {
+      deviceId: devId,
+      deviceName,
+      platform,
+      lastActive: new Date().toISOString(),
+      ipMock: '154.160.22.4 (Accra, GH)'
+    };
+  };
+
   // Backend Sync Helper
   const syncToServer = async (payload: any) => {
     try {
@@ -605,6 +693,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
           if (Array.isArray(data.emailAlerts) && data.emailAlerts.length > 0) {
             setEmailAlerts(data.emailAlerts);
+          }
+          if (Array.isArray(data.letters) && data.letters.length > 0) {
+            setLetters(data.letters);
+          }
+          if (Array.isArray(data.teamMembers) && data.teamMembers.length > 0) {
+            setTeamMembers(data.teamMembers);
           }
         }
       } catch {
@@ -764,7 +858,31 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    // User is approved!
+    // User is approved! Check Admin Concurrent Device Limit (Max 2 devices)
+    if (user.isAdmin) {
+      const currentDev = getCurrentDeviceSession();
+      const existingSessions = user.activeSessions || [];
+      const alreadyActive = existingSessions.some(s => s.deviceId === currentDev.deviceId);
+
+      if (!alreadyActive && existingSessions.length >= 2) {
+        const deviceNames = existingSessions.map(s => `"${s.deviceName}"`).join(' and ');
+        return {
+          success: false,
+          message: `Security Access Restriction: Administrator accounts are strictly restricted to at most two concurrent devices. Currently 2 devices are registered (${deviceNames}). Please revoke a device session to continue.`
+        };
+      }
+
+      const updatedSessions = alreadyActive
+        ? existingSessions.map(s => s.deviceId === currentDev.deviceId ? { ...s, lastActive: new Date().toISOString() } : s)
+        : [...existingSessions, currentDev];
+
+      user.activeSessions = updatedSessions;
+      const nextUsers = registeredUsers.map(u => u.id === user.id ? { ...u, activeSessions: updatedSessions } : u);
+      setRegisteredUsers(nextUsers);
+      localStorage.setItem('drt_registered_users', JSON.stringify(nextUsers));
+      syncToServer({ users: nextUsers });
+    }
+
     setClientUser(user);
     localStorage.setItem('drt_client_auth', JSON.stringify(user));
     setIsAuthModalOpen(false);
@@ -782,7 +900,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   };
 
-  // Master Admin direct authentication
+  // Master Admin direct authentication with 2-device check
   const adminLogin = (password: string): boolean => {
     if (password === 'admin' || password === 'admin123' || password === 'deroyal2026') {
       const adminUser: ClientUser = registeredUsers.find(u => u.isAdmin) || {
@@ -797,8 +915,28 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isVerified: true,
         isAdmin: true
       };
-      setClientUser(adminUser);
-      localStorage.setItem('drt_client_auth', JSON.stringify(adminUser));
+
+      const currentDev = getCurrentDeviceSession();
+      const existingSessions = adminUser.activeSessions || [];
+      const alreadyActive = existingSessions.some(s => s.deviceId === currentDev.deviceId);
+
+      if (!alreadyActive && existingSessions.length >= 2) {
+        return false;
+      }
+
+      const updatedSessions = alreadyActive
+        ? existingSessions.map(s => s.deviceId === currentDev.deviceId ? { ...s, lastActive: new Date().toISOString() } : s)
+        : [...existingSessions, currentDev];
+
+      const updatedAdmin = { ...adminUser, activeSessions: updatedSessions };
+      setClientUser(updatedAdmin);
+      localStorage.setItem('drt_client_auth', JSON.stringify(updatedAdmin));
+
+      const nextUsers = registeredUsers.map(u => u.id === adminUser.id ? updatedAdmin : u);
+      setRegisteredUsers(nextUsers);
+      localStorage.setItem('drt_registered_users', JSON.stringify(nextUsers));
+      syncToServer({ users: nextUsers });
+
       setIsAdminOpen(true);
       return true;
     }
@@ -1212,6 +1350,110 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       syncToServer({ inquiries: next });
       return next;
     });
+  };
+
+  // ==================== OFFICIAL COMPANY LETTERS & PROPOSALS ====================
+  const addLetter = (letterData: Omit<OfficialLetter, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const id = `ltr-${Date.now()}`;
+    const newLetter: OfficialLetter = {
+      ...letterData,
+      id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    setLetters(prev => {
+      const next = [newLetter, ...prev];
+      localStorage.setItem('drt_letters', JSON.stringify(next));
+      syncToServer({ letters: next });
+      return next;
+    });
+    return id;
+  };
+
+  const updateLetter = (id: string, updates: Partial<OfficialLetter>) => {
+    setLetters(prev => {
+      const next = prev.map(l => l.id === id ? { ...l, ...updates, updatedAt: new Date().toISOString() } : l);
+      localStorage.setItem('drt_letters', JSON.stringify(next));
+      syncToServer({ letters: next });
+      return next;
+    });
+  };
+
+  const deleteLetter = (id: string) => {
+    setLetters(prev => {
+      const next = prev.filter(l => l.id !== id);
+      localStorage.setItem('drt_letters', JSON.stringify(next));
+      syncToServer({ letters: next });
+      return next;
+    });
+  };
+
+  // ==================== CORE ENGINEERING TEAM DIRECTORY ====================
+  const addTeamMember = (memberData: Omit<TeamMember, 'id'>) => {
+    const id = `team-${Date.now()}`;
+    const newMember: TeamMember = {
+      ...memberData,
+      id
+    };
+    setTeamMembers(prev => {
+      const next = [...prev, newMember];
+      localStorage.setItem('drt_team_members', JSON.stringify(next));
+      syncToServer({ teamMembers: next });
+      return next;
+    });
+    return id;
+  };
+
+  const updateTeamMember = (id: string, updates: Partial<TeamMember>) => {
+    setTeamMembers(prev => {
+      const next = prev.map(m => m.id === id ? { ...m, ...updates } : m);
+      localStorage.setItem('drt_team_members', JSON.stringify(next));
+      syncToServer({ teamMembers: next });
+      return next;
+    });
+  };
+
+  const deleteTeamMember = (id: string) => {
+    setTeamMembers(prev => {
+      const next = prev.filter(m => m.id !== id);
+      localStorage.setItem('drt_team_members', JSON.stringify(next));
+      syncToServer({ teamMembers: next });
+      return next;
+    });
+  };
+
+  const resetTeamToDefault = () => {
+    setTeamMembers(DEFAULT_TEAM);
+    localStorage.setItem('drt_team_members', JSON.stringify(DEFAULT_TEAM));
+    syncToServer({ teamMembers: DEFAULT_TEAM });
+  };
+
+  // Revoke Admin Device Session
+  const revokeAdminSession = (userId: string, deviceId: string) => {
+    setRegisteredUsers(prev => {
+      const next = prev.map(u => {
+        if (u.id === userId) {
+          const sessions = (u.activeSessions || []).filter(s => s.deviceId !== deviceId);
+          return { ...u, activeSessions: sessions };
+        }
+        return u;
+      });
+      localStorage.setItem('drt_registered_users', JSON.stringify(next));
+      syncToServer({ users: next });
+      return next;
+    });
+
+    if (clientUser && clientUser.id === userId) {
+      const updatedSessions = (clientUser.activeSessions || []).filter(s => s.deviceId !== deviceId);
+      const currentDev = getCurrentDeviceSession();
+      if (deviceId === currentDev.deviceId) {
+        logoutClient();
+      } else {
+        const updatedSelf = { ...clientUser, activeSessions: updatedSessions };
+        setClientUser(updatedSelf);
+        localStorage.setItem('drt_client_auth', JSON.stringify(updatedSelf));
+      }
+    }
   };
 
   // ==================== LIVE SUPPORT REAL-TIME CHAT IMPLEMENTATION ====================
@@ -2197,7 +2439,23 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdminOpen,
         setIsAdminOpen,
         activeAdminTab,
-        setActiveAdminTab
+        setActiveAdminTab,
+
+        // Official Letters
+        letters,
+        addLetter,
+        updateLetter,
+        deleteLetter,
+
+        // Core Team
+        teamMembers,
+        addTeamMember,
+        updateTeamMember,
+        deleteTeamMember,
+        resetTeamToDefault,
+
+        // Admin Security & Device Sessions
+        revokeAdminSession
       }}
     >
       {children}

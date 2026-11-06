@@ -103,7 +103,7 @@ export const ConsultationPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen pb-24 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white transition-colors">
+    <div className="w-full max-w-full overflow-x-hidden min-h-screen pb-24 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white transition-colors">
       {/* Hero Banner */}
       <section className="relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 text-white py-16 sm:py-24 border-b border-slate-800">
         <div className="absolute inset-0 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:24px_24px] opacity-15"></div>

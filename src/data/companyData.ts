@@ -10,7 +10,9 @@ import {
   ServiceProjectRequest,
   TrackedProject,
   FAQArticle,
-  ProjectEmailAlert
+  ProjectEmailAlert,
+  OfficialLetter,
+  TeamMember
 } from '../types/index.ts';
 
 export const DEFAULT_LOGO = '/assets/aistudio/Deroyaltech_Digital_Innovation_Logo_9f10ddb1.png';
@@ -1136,6 +1138,126 @@ export const DEFAULT_EMAIL_ALERTS: ProjectEmailAlert[] = [
     status: 'Delivered',
     leadEngineer: 'Platform Security Lead',
     estimatedDeliveryDate: '2026-11-10'
+  }
+];
+
+// ==================== DEFAULT OFFICIAL LETTERS & PROPOSALS ====================
+export const DEFAULT_LETTERS: OfficialLetter[] = [
+  {
+    id: 'ltr-001',
+    referenceNumber: 'DRT/LTR/2026/041',
+    date: 'November 6, 2026',
+    recipientCompany: 'Ghana Commercial Bank (GCB) PLC',
+    recipientName: 'Mr. Emmanuel Kwakye',
+    recipientTitle: 'Head of Infrastructure & Cloud Operations',
+    recipientAddress: 'GCB Head Office, High Street, Accra, Ghana',
+    recipientEmail: 'e.kwakye@gcb.com.gh',
+    recipientPhone: '+233 (0) 30 268 1521',
+    subject: 'PROPOSAL FOR DEDICATED HYBRID CLOUD INFRASTRUCTURE & DISASTER RECOVERY HUB',
+    templateType: 'proposal',
+    salutation: 'Dear Mr. Kwakye,',
+    content: `We have the honor to submit our formal technical proposal for the design and deployment of an enterprise-grade hybrid cloud infrastructure and secondary disaster recovery node for Ghana Commercial Bank PLC.
+
+DeRoyalTech Systems Limited proposes a fault-tolerant edge cluster in Accra interconnected with secondary cloud nodes, delivering:
+1. High-Availability Compute: Automated active-passive failover with target RPO < 15 seconds and RTO < 2 minutes.
+2. End-to-End Encryption & Auditability: FIPS-compliant cryptographic modules safeguarding inter-branch financial transaction streams.
+3. 24/7 DevOps Operations: On-site systems engineers based in Airport City, Accra, with dedicated direct line access.
+
+Our team stands prepared to initiate the technical architecture blueprint upon receipt of your formal instruction.`,
+    signatoryName: 'Emmanuel Osei',
+    signatoryRole: 'Chief Technology Officer & Solutions Architect',
+    signatoryPhone: '+233 (0) 30 294 8821',
+    status: 'issued',
+    createdAt: '2026-11-04T09:30:00Z',
+    updatedAt: '2026-11-05T14:15:00Z'
+  },
+  {
+    id: 'ltr-002',
+    referenceNumber: 'DRT/LTR/2026/042',
+    date: 'November 5, 2026',
+    recipientCompany: 'Asante Logistics & Freight Systems Ltd',
+    recipientName: 'Mr. Kwame Asante',
+    recipientTitle: 'Managing Director',
+    recipientAddress: 'Airport City, Accra, Greater Accra Region, Ghana',
+    recipientEmail: 'k.asante@ghana-enterprises.com',
+    recipientPhone: '+233 24 590 1284',
+    subject: 'FORMAL QUOTATION & SLA SPECIFICATIONS FOR WAREHOUSE HARDWARE TERMINALS',
+    templateType: 'quotation',
+    salutation: 'Dear Mr. Asante,',
+    content: `Pursuant to your request for proposal, DeRoyalTech Systems Limited is pleased to present our official quotation schedule for forty-five (45) rugged industrial RFID terminals and integrated edge gateway controllers.
+
+All hardware includes:
+- Comprehensive 3-Year Enterprise Replacement Warranty in Ghana.
+- Native integration with your custom DeRoyalTech CRM pipeline.
+- Certified on-site deployment and warehouse staff training by our systems engineers.
+
+Payment terms are 50% mobilization, 40% upon hardware deployment, and 10% following 30-day continuous operation testing.`,
+    signatoryName: 'Emmanuel Osei',
+    signatoryRole: 'Chief Technology Officer & Solutions Architect',
+    signatoryPhone: '+233 (0) 30 294 8821',
+    status: 'sent',
+    createdAt: '2026-11-05T11:00:00Z',
+    updatedAt: '2026-11-05T16:20:00Z'
+  }
+];
+
+// ==================== DEFAULT CORE ENGINEERING TEAM ====================
+export const DEFAULT_TEAM: TeamMember[] = [
+  {
+    id: 'team-01',
+    name: 'Emmanuel Osei',
+    role: 'Chief Technology Officer & Principal Architect',
+    department: 'Executive & Architecture',
+    bio: 'Specializes in distributed enterprise architectures, microservice orchestration, and mission-critical cloud deployments across West Africa.',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
+    email: 'e.osei@deroyaltech.com',
+    phone: '+233 (0) 30 294 8821',
+    linkedinUrl: 'https://linkedin.com/company/deroyaltech',
+    githubUrl: 'https://github.com/osei-33',
+    displayOrder: 1,
+    isActive: true
+  },
+  {
+    id: 'team-02',
+    name: 'Kwame Asante',
+    role: 'Lead Cloud Infrastructure & DevOps Engineer',
+    department: 'Cloud & Infrastructure',
+    bio: 'Oversees multi-region Kubernetes clusters, automated zero-downtime CI/CD deployment pipelines, and edge network optimization.',
+    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
+    email: 'k.asante@deroyaltech.com',
+    phone: '+233 24 590 1284',
+    linkedinUrl: 'https://linkedin.com/company/deroyaltech',
+    githubUrl: 'https://github.com/osei-33',
+    displayOrder: 2,
+    isActive: true
+  },
+  {
+    id: 'team-03',
+    name: 'Akosua Mensah',
+    role: 'Head of Full-Stack & CRM Solutions',
+    department: 'Software & CRM Development',
+    bio: 'Directs bespoke CRM platforms, client portals, and secure financial integrations with Ghana Interbank Payment and Settlement Systems.',
+    avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80',
+    email: 'a.mensah@deroyaltech.com',
+    phone: '+233 (0) 30 294 8821',
+    linkedinUrl: 'https://linkedin.com/company/deroyaltech',
+    githubUrl: 'https://github.com/osei-33',
+    displayOrder: 3,
+    isActive: true
+  },
+  {
+    id: 'team-04',
+    name: 'David Boateng',
+    role: 'Senior Hardware & Industrial IoT Specialist',
+    department: 'Hardware & Embedded Systems',
+    bio: 'Designs custom telemetry sensor controllers, industrial server racks, and turnkey edge computer appliances for logistics hubs.',
+    avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=400&q=80',
+    email: 'd.boateng@deroyaltech.com',
+    phone: '+233 (0) 30 294 8821',
+    linkedinUrl: 'https://linkedin.com/company/deroyaltech',
+    githubUrl: 'https://github.com/osei-33',
+    displayOrder: 4,
+    isActive: true
   }
 ];
 

@@ -35,7 +35,8 @@ import {
   AlertTriangle,
   Headphones,
   Activity,
-  BookOpen
+  BookOpen,
+  FileText
 } from 'lucide-react';
 import { useSite } from '../context/SiteContext.tsx';
 import { 
@@ -53,6 +54,8 @@ import { DEFAULT_LOGO } from '../data/companyData.ts';
 import { AdminLiveSupportTab } from './admin/tabs/AdminLiveSupportTab.tsx';
 import { AdminProjectTrackerTab } from './admin/tabs/AdminProjectTrackerTab.tsx';
 import { AdminKnowledgeBaseTab } from './admin/tabs/AdminKnowledgeBaseTab.tsx';
+import { AdminLettersTab } from './admin/tabs/AdminLettersTab.tsx';
+import { AdminTeamTab } from './admin/tabs/AdminTeamTab.tsx';
 
 interface AdminPortalModalProps {
   isOpen: boolean;
@@ -64,6 +67,8 @@ type AdminTab =
   | 'support'
   | 'tracker'
   | 'knowledge'
+  | 'letters'
+  | 'team'
   | 'testimonials' 
   | 'metrics' 
   | 'bookings' 
@@ -133,7 +138,11 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
     serviceRequests,
     trackedProjects,
     // Knowledge Base
-    faqArticles
+    faqArticles,
+    // Letters & Team Directory
+    letters,
+    teamMembers,
+    revokeAdminSession
   } = useSite();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('services');
@@ -578,6 +587,40 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
             </button>
 
             <button
+              onClick={() => setActiveTab('letters')}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left whitespace-nowrap ${
+                activeTab === 'letters'
+                  ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-indigo-400" />
+                <span>Official Letters & Proposals</span>
+              </div>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
+                {(letters || []).length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('team')}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left whitespace-nowrap ${
+                activeTab === 'team'
+                  ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-emerald-400" />
+                <span>Engineering Team</span>
+              </div>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
+                {(teamMembers || []).length}
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('testimonials')}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left whitespace-nowrap ${
                 activeTab === 'testimonials'
@@ -780,6 +823,16 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
             {/* TAB: KNOWLEDGE BASE & FAQ */}
             {activeTab === 'knowledge' && (
               <AdminKnowledgeBaseTab />
+            )}
+
+            {/* TAB: OFFICIAL LETTERS & PROPOSALS */}
+            {activeTab === 'letters' && (
+              <AdminLettersTab />
+            )}
+
+            {/* TAB: CORE ENGINEERING TEAM DIRECTORY */}
+            {activeTab === 'team' && (
+              <AdminTeamTab />
             )}
 
             {/* TAB: SERVICES & PRICING */}
@@ -1782,6 +1835,49 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
                           <span>· Role: {user.role}</span>
                           <span>· Registered: {new Date(user.registeredAt).toLocaleDateString()}</span>
                         </div>
+
+                        {/* Admin 2-Device Concurrency Tracker */}
+                        {user.isAdmin && (
+                          <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700/60">
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                                <ShieldCheck className="w-3.5 h-3.5 text-orange-500" />
+                                <span>Active Device Sessions (Max 2 Allowed):</span>
+                              </span>
+                              <span className="font-mono text-orange-600 dark:text-orange-400 font-bold px-1.5 py-0.5 rounded bg-orange-50 dark:bg-orange-950/50 border border-orange-200 dark:border-orange-900 text-[10px]">
+                                {(user.activeSessions || []).length} / 2
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2 mt-1.5">
+                              {(user.activeSessions || []).length === 0 ? (
+                                <span className="text-[11px] text-slate-400 italic">No device sessions currently active</span>
+                              ) : (
+                                user.activeSessions?.map((s) => (
+                                  <div
+                                    key={s.deviceId}
+                                    className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[11px] flex items-center gap-2 shadow-xs"
+                                  >
+                                    <span className="font-medium text-slate-800 dark:text-slate-200">{s.deviceName}</span>
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      {new Date(s.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        revokeAdminSession(user.id, s.deviceId);
+                                        triggerToast(`Revoked session for ${s.deviceName}`);
+                                      }}
+                                      className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-bold text-[10px] underline ml-1 cursor-pointer"
+                                    >
+                                      Revoke
+                                    </button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Action buttons */}
