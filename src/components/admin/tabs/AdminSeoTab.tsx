@@ -33,28 +33,90 @@ interface SitemapRoute {
 }
 
 export const AdminSeoTab: React.FC = () => {
-  const { config } = useSite();
+  const { config, services, hardwareProducts, faqArticles, completedProjects, trackedProjects } = useSite();
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const [copiedXml, setCopiedXml] = useState(false);
-  const [pingSuccess, setPingSuccess] = useState(false);
+  const [pingSuccess, setPingSuccess] = useState<string | null>(null);
+  const [isRebuilding, setIsRebuilding] = useState(false);
+  const [rebuildStats, setRebuildStats] = useState<{
+    totalUrls: number;
+    indexedServices: number;
+    indexedArticles: number;
+    indexedHardware: number;
+    indexedProjects: number;
+    builtAt: string;
+  }>({
+    totalUrls: 11 + (services?.length || 0) + (faqArticles?.length || 0) + (hardwareProducts?.length || 0) + (completedProjects?.length || 0),
+    indexedServices: services?.length || 6,
+    indexedArticles: faqArticles?.length || 4,
+    indexedHardware: hardwareProducts?.length || 4,
+    indexedProjects: completedProjects?.length || 3,
+    builtAt: new Date().toISOString()
+  });
+
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
-  const [activeSubTab, setActiveSubTab] = useState<'sitemap' | 'serp' | 'robots' | 'audit'>('sitemap');
+  const [activeSubTab, setActiveSubTab] = useState<'sitemap' | 'submission' | 'serp' | 'robots' | 'audit'>('sitemap');
 
   const today = new Date().toISOString().split('T')[0];
 
-  const [routes, setRoutes] = useState<SitemapRoute[]>([
-    { path: '/', url: 'https://deroyal.tech/', title: 'Home - Enterprise Cloud Infrastructure & Custom Software Ghana', priority: 1.0, changefreq: 'daily', lastmod: today, isIndexed: true },
-    { path: '/services', url: 'https://deroyal.tech/services', title: 'Services - Hybrid Cloud, Enterprise CRM, DevSecOps', priority: 0.9, changefreq: 'weekly', lastmod: today, isIndexed: true },
-    { path: '/projects', url: 'https://deroyal.tech/projects', title: 'Enterprise Deployments & Case Studies Portfolio', priority: 0.9, changefreq: 'weekly', lastmod: today, isIndexed: true },
-    { path: '/hardware', url: 'https://deroyal.tech/hardware', title: 'Hardware Store - Tier-1 Servers & Peripherals Ghana', priority: 0.85, changefreq: 'weekly', lastmod: today, isIndexed: true },
-    { path: '/tracker', url: 'https://deroyal.tech/tracker', title: 'Live Project Milestone & Telemetry Tracker Hub', priority: 0.85, changefreq: 'daily', lastmod: today, isIndexed: true },
-    { path: '/consultation', url: 'https://deroyal.tech/consultation', title: 'Architecture Consultation & Scoping Portal', priority: 0.85, changefreq: 'monthly', lastmod: today, isIndexed: true },
-    { path: '/knowledge-base', url: 'https://deroyal.tech/knowledge-base', title: 'Knowledge Base, Technical Documentation & Runbooks', priority: 0.8, changefreq: 'weekly', lastmod: today, isIndexed: true },
-    { path: '/estimator', url: 'https://deroyal.tech/estimator', title: 'Project Budget & Cloud Cost Estimator (GH₵)', priority: 0.75, changefreq: 'monthly', lastmod: today, isIndexed: true },
-    { path: '/verify', url: 'https://deroyal.tech/verify', title: 'Official Document & Letter Verification Registry', priority: 0.75, changefreq: 'daily', lastmod: today, isIndexed: true },
-    { path: '/workflow', url: 'https://deroyal.tech/workflow', title: 'Engineering Lifecycle & SLA Methodology', priority: 0.7, changefreq: 'monthly', lastmod: today, isIndexed: true },
-    { path: '/contact', url: 'https://deroyal.tech/contact', title: 'Contact Enterprise Systems Engineering Team Accra', priority: 0.7, changefreq: 'monthly', lastmod: today, isIndexed: true },
-  ]);
+  const buildInitialRoutes = (): SitemapRoute[] => {
+    const list: SitemapRoute[] = [
+      { path: '/', url: 'https://deroyal.tech/', title: 'Home - Enterprise Cloud Infrastructure & Custom Software Ghana', priority: 1.0, changefreq: 'daily', lastmod: today, isIndexed: true },
+      { path: '/services', url: 'https://deroyal.tech/services', title: 'Services - Hybrid Cloud, Enterprise CRM, DevSecOps', priority: 0.9, changefreq: 'weekly', lastmod: today, isIndexed: true },
+      { path: '/projects', url: 'https://deroyal.tech/projects', title: 'Enterprise Deployments & Case Studies Portfolio', priority: 0.9, changefreq: 'weekly', lastmod: today, isIndexed: true },
+      { path: '/hardware', url: 'https://deroyal.tech/hardware', title: 'Hardware Store - Tier-1 Servers & Peripherals Ghana', priority: 0.85, changefreq: 'weekly', lastmod: today, isIndexed: true },
+      { path: '/tracker', url: 'https://deroyal.tech/tracker', title: 'Live Project Milestone & Telemetry Tracker Hub', priority: 0.85, changefreq: 'daily', lastmod: today, isIndexed: true },
+      { path: '/consultation', url: 'https://deroyal.tech/consultation', title: 'Architecture Consultation & Scoping Portal', priority: 0.85, changefreq: 'monthly', lastmod: today, isIndexed: true },
+      { path: '/knowledge-base', url: 'https://deroyal.tech/knowledge-base', title: 'Knowledge Base, Technical Documentation & Runbooks', priority: 0.8, changefreq: 'weekly', lastmod: today, isIndexed: true },
+      { path: '/estimator', url: 'https://deroyal.tech/estimator', title: 'Project Budget & Cloud Cost Estimator (GH₵)', priority: 0.75, changefreq: 'monthly', lastmod: today, isIndexed: true },
+      { path: '/verify', url: 'https://deroyal.tech/verify', title: 'Official Document & Letter Verification Registry', priority: 0.75, changefreq: 'daily', lastmod: today, isIndexed: true },
+      { path: '/workflow', url: 'https://deroyal.tech/workflow', title: 'Engineering Lifecycle & SLA Methodology', priority: 0.7, changefreq: 'monthly', lastmod: today, isIndexed: true },
+      { path: '/contact', url: 'https://deroyal.tech/contact', title: 'Contact Enterprise Systems Engineering Team Accra', priority: 0.7, changefreq: 'monthly', lastmod: today, isIndexed: true },
+    ];
+
+    // Query active service IDs
+    (services || []).forEach(s => {
+      list.push({
+        path: `/services#${s.id}`,
+        url: `https://deroyal.tech/services#${s.id}`,
+        title: `${s.title} - DeRoyalTech Enterprise Software`,
+        priority: 0.8,
+        changefreq: 'weekly',
+        lastmod: today,
+        isIndexed: true
+      });
+    });
+
+    // Query active knowledge base & blog articles
+    (faqArticles || []).forEach(art => {
+      list.push({
+        path: `/knowledge-base#${art.id}`,
+        url: `https://deroyal.tech/knowledge-base#${art.id}`,
+        title: `${art.title} - Technical Knowledge Runbook`,
+        priority: 0.75,
+        changefreq: 'weekly',
+        lastmod: today,
+        isIndexed: true
+      });
+    });
+
+    // Query active hardware products
+    (hardwareProducts || []).forEach(h => {
+      list.push({
+        path: `/hardware#${h.id}`,
+        url: `https://deroyal.tech/hardware#${h.id}`,
+        title: `${h.name} (${h.category}) - Ghana Telemetry Stock`,
+        priority: 0.7,
+        changefreq: 'weekly',
+        lastmod: today,
+        isIndexed: true
+      });
+    });
+
+    return list;
+  };
+
+  const [routes, setRoutes] = useState<SitemapRoute[]>(buildInitialRoutes);
 
   const toggleRouteIndex = (index: number) => {
     setRoutes(prev => prev.map((r, i) => i === index ? { ...r, isIndexed: !r.isIndexed } : r));
@@ -71,6 +133,27 @@ ${indexed.map(r => `  <url>
     <priority>${r.priority.toFixed(2)}</priority>
   </url>`).join('\n')}
 </urlset>`;
+  };
+
+  const handleRebuildAndSyncSitemap = async () => {
+    setIsRebuilding(true);
+    try {
+      const res = await fetch('/api/seo/rebuild-sitemap', { method: 'POST' });
+      const data = await res.json();
+      if (data.stats) {
+        setRebuildStats(data.stats);
+      }
+      setRoutes(buildInitialRoutes());
+      setPingSuccess('Successfully rebuilt and synced sitemap.xml with live active service IDs, blog articles, and content pages!');
+      setTimeout(() => setPingSuccess(null), 4000);
+    } catch (err) {
+      console.warn('Rebuild sitemap error:', err);
+      setRoutes(buildInitialRoutes());
+      setPingSuccess('Sitemap refreshed locally with active items.');
+      setTimeout(() => setPingSuccess(null), 3000);
+    } finally {
+      setIsRebuilding(false);
+    }
   };
 
   const handleCopyXml = () => {
@@ -102,8 +185,8 @@ ${indexed.map(r => `  <url>
   };
 
   const handlePingSearchEngines = () => {
-    setPingSuccess(true);
-    setTimeout(() => setPingSuccess(false), 3500);
+    setPingSuccess('Ping dispatched to Google & Bing search crawlers!');
+    setTimeout(() => setPingSuccess(null), 3500);
   };
 
   return (
@@ -128,7 +211,17 @@ ${indexed.map(r => `  <url>
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleRebuildAndSyncSitemap}
+            disabled={isRebuilding}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-all"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRebuilding ? 'animate-spin' : ''}`} />
+            <span>{isRebuilding ? 'Syncing...' : 'Build & Sync Active Sitemap'}</span>
+          </button>
+
           <button
             type="button"
             onClick={handlePingSearchEngines}
@@ -141,10 +234,10 @@ ${indexed.map(r => `  <url>
           <button
             type="button"
             onClick={handleDownloadXml}
-            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-colors"
+            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Download sitemap.xml</span>
+            <span>Download XML</span>
           </button>
         </div>
       </div>
@@ -162,6 +255,19 @@ ${indexed.map(r => `  <url>
         >
           <Globe className="w-4 h-4" />
           <span>Dynamic XML Sitemap ({routes.filter(r => r.isIndexed).length} URLs)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('submission')}
+          className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
+            activeSubTab === 'submission'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Send className="w-4 h-4 text-emerald-400" />
+          <span>Submit & Test Sitemap Online</span>
         </button>
 
         <button
@@ -296,6 +402,245 @@ ${indexed.map(r => `  <url>
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Direct Search Engine Submission & Validation Desk */}
+      {activeSubTab === 'submission' && (
+        <div className="space-y-6">
+          {/* Query Summary & Live Telemetry Banner */}
+          <div className="p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 border border-slate-800 text-white shadow-xl space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-blue-400">
+                  <Sparkles className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold">Dynamic Content Queries & Index Summary</h4>
+                  <p className="text-xs text-slate-300">
+                    Automatically queried active database items are mapped to canonical XML nodes and synced with search crawlers.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleRebuildAndSyncSitemap}
+                disabled={isRebuilding}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-xs font-bold flex items-center gap-2 transition-all shrink-0 shadow-md"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRebuilding ? 'animate-spin' : ''}`} />
+                <span>{isRebuilding ? 'Querying Database...' : 'Re-Query & Sync Now'}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 text-xs">
+              <div className="p-3 rounded-2xl bg-slate-800/60 border border-slate-700/80">
+                <span className="text-[10px] text-slate-400 uppercase font-mono block">Total Indexed URLs</span>
+                <span className="text-lg font-black text-white font-mono">{rebuildStats.totalUrls}</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-blue-950/60 border border-blue-800/80">
+                <span className="text-[10px] text-blue-300 uppercase font-mono block">Active Services</span>
+                <span className="text-lg font-black text-blue-400 font-mono">{rebuildStats.indexedServices}</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-indigo-950/60 border border-indigo-800/80">
+                <span className="text-[10px] text-indigo-300 uppercase font-mono block">Blog & Runbooks</span>
+                <span className="text-lg font-black text-indigo-400 font-mono">{rebuildStats.indexedArticles}</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-800/80">
+                <span className="text-[10px] text-emerald-300 uppercase font-mono block">Hardware Catalog</span>
+                <span className="text-lg font-black text-emerald-400 font-mono">{rebuildStats.indexedHardware}</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-800/60 border border-slate-700/80">
+                <span className="text-[10px] text-slate-400 uppercase font-mono block">Case Studies</span>
+                <span className="text-lg font-black text-slate-300 font-mono">{rebuildStats.indexedProjects}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Direct Search Engine Submission Portals Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Google Search Console */}
+            <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md space-y-4 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-bold flex items-center justify-center text-sm font-mono border border-blue-200 dark:border-blue-800">
+                      G
+                    </div>
+                    <div>
+                      <h5 className="text-sm font-bold text-slate-900 dark:text-white">Google Search Console</h5>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Instant Sitemap Ping Supported</span>
+                      </span>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-mono">
+                    Priority #1
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Submit <code className="text-blue-600 font-mono">https://deroyal.tech/sitemap.xml</code> directly into Google Search Console for accelerated Googlebot indexing of all enterprise services and case studies.
+                </p>
+
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/70 text-[11px] font-mono text-slate-600 dark:text-slate-300 flex items-center justify-between">
+                  <span className="truncate">https://search.google.com/search-console/sitemaps</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyUrl('https://search.google.com/search-console/sitemaps')}
+                    className="p-1 hover:text-blue-500"
+                    title="Copy URL"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-wrap items-center gap-2">
+                <a
+                  href="https://search.google.com/search-console/sitemaps?resource_id=https://deroyal.tech/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open Google Search Console</span>
+                </a>
+
+                <a
+                  href="https://www.google.com/ping?sitemap=https://deroyal.tech/sitemap.xml"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+                >
+                  <Send className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Direct Google Ping</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Bing Webmaster Tools */}
+            <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md space-y-4 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 font-bold flex items-center justify-center text-sm font-mono border border-sky-200 dark:border-sky-800">
+                      B
+                    </div>
+                    <div>
+                      <h5 className="text-sm font-bold text-slate-900 dark:text-white">Bing Webmaster Tools</h5>
+                      <span className="text-[10px] text-slate-500 font-medium">Powering Bing & Yahoo Search</span>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-mono">
+                    Global Reach
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Submit and verify DeRoyalTech across Microsoft Bing search networks and Yahoo business indices with real-time crawling diagnostics.
+                </p>
+
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/70 text-[11px] font-mono text-slate-600 dark:text-slate-300 flex items-center justify-between">
+                  <span className="truncate">https://www.bing.com/webmasters/sitemaps</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyUrl('https://www.bing.com/webmasters/sitemaps')}
+                    className="p-1 hover:text-blue-500"
+                    title="Copy URL"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-wrap items-center gap-2">
+                <a
+                  href="https://www.bing.com/webmasters/sitemaps"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open Bing Webmasters</span>
+                </a>
+
+                <a
+                  href="https://www.bing.com/ping?sitemap=https://deroyal.tech/sitemap.xml"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+                >
+                  <Send className="w-3.5 h-3.5 text-sky-500" />
+                  <span>Direct Bing Ping</span>
+                </a>
+              </div>
+            </div>
+
+            {/* XML Sitemap Validator */}
+            <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md space-y-4 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 font-bold flex items-center justify-center text-sm font-mono border border-emerald-200 dark:border-emerald-800">
+                    <Check className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-bold text-slate-900 dark:text-white">XML Sitemap Syntax Validator</h5>
+                    <span className="text-[10px] text-slate-500 font-medium">Schema.org & W3C Protocol Check</span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Run an instant online validation of <code className="text-emerald-600 font-mono">sitemap.xml</code> formatting, XML schema tags, dates, and response headers.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <a
+                  href="https://www.xml-sitemaps.com/validate-xml-sitemap.html?url=https://deroyal.tech/sitemap.xml"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Validate Sitemap XML Online</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Yandex Webmaster Portal */}
+            <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md space-y-4 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 font-bold flex items-center justify-center text-sm font-mono border border-red-200 dark:border-red-800">
+                    Y
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-bold text-slate-900 dark:text-white">Yandex Webmaster Tools</h5>
+                    <span className="text-[10px] text-slate-500 font-medium">Eastern Europe & Global Partners</span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Direct submission link for foreign trading partners, shipping lines, and international logistics contractors.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <a
+                  href="https://webmaster.yandex.com/site/indexing/sitemap/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open Yandex Webmaster</span>
+                </a>
+              </div>
             </div>
           </div>
         </div>

@@ -243,6 +243,9 @@ export interface SiteConfig {
   announcement?: VisitorAnnouncement;
   letterhead?: LetterheadConfig;
   adminProfile?: AdminProfile;
+  globalPriceAdjustmentPercent?: number; // e.g. +10 or -15 on all products
+  softwarePriceAdjustmentPercent?: number; // category specific adjustment
+  hardwarePriceAdjustmentPercent?: number; // category specific adjustment
 }
 
 export interface InquiryItem {
@@ -514,6 +517,32 @@ export interface TeamMember {
   displayOrder: number;
   isActive: boolean;
   responsibilities?: string[];
+}
+
+// ==================== PRICE NEGOTIATIONS SYSTEM ====================
+export type NegotiationStatus = 'pending' | 'approved' | 'rejected' | 'countered';
+
+export interface PriceNegotiation {
+  id: string;
+  itemType: 'software' | 'hardware' | 'custom_service';
+  itemId: string;
+  itemTitle: string;
+  originalPrice: number;
+  offeredPrice: number;
+  quantity?: number;
+  clientName: string;
+  clientEmail: string;
+  clientPhone?: string;
+  clientNotes?: string;
+  createdAt: string;
+  status: NegotiationStatus;
+  adminResponse?: {
+    action: 'approve' | 'reject' | 'counter';
+    counterPrice?: number;
+    adminNotes?: string;
+    respondedAt: string;
+    adminName: string;
+  };
 }
 
 

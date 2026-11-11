@@ -23,7 +23,9 @@ import {
   ProjectEmailAlert,
   OfficialLetter,
   TeamMember,
-  AdminDeviceSession
+  AdminDeviceSession,
+  PriceNegotiation,
+  NegotiationStatus
 } from '../types/index.ts';
 import { 
   DEFAULT_SITE_CONFIG, 
@@ -246,9 +248,61 @@ interface SiteContextType {
   setIsAdminOpen: (open: boolean) => void;
   activeAdminTab: AdminPortalTab;
   setActiveAdminTab: (tab: AdminPortalTab) => void;
+
+  // Price Negotiations & Global Margin Adjustments
+  negotiations: PriceNegotiation[];
+  submitNegotiation: (data: Omit<PriceNegotiation, 'id' | 'createdAt' | 'status'>) => Promise<PriceNegotiation>;
+  respondToNegotiation: (id: string, action: 'approve' | 'reject' | 'counter', counterPrice?: number, adminNotes?: string) => Promise<void>;
+  updateGlobalPriceAdjustment: (percent: number, category?: 'all' | 'software' | 'hardware') => Promise<void>;
+  getAdjustedPrice: (amount: number, category?: 'software' | 'hardware') => number;
+  openNegotiationModal: (item: { id: string; title: string; price: number; type: 'software' | 'hardware' | 'custom_service' }) => void;
+  isNegotiationModalOpen: boolean;
+  setIsNegotiationModalOpen: (open: boolean) => void;
+  negotiationTargetItem: { id: string; title: string; price: number; type: 'software' | 'hardware' | 'custom_service' } | null;
 }
 
 const SiteContext = createContext<SiteContextType | undefined>(undefined);
+
+// Initial Sample Price Negotiations
+const DEFAULT_NEGOTIATIONS: PriceNegotiation[] = [
+  {
+    id: 'NEG-2026-001',
+    itemType: 'hardware',
+    itemId: 'hw-workstation-threadripper',
+    itemTitle: 'Pro Enterprise AI & CAD Tower (Threadripper Pro 64-Core)',
+    originalPrice: 42500,
+    offeredPrice: 38000,
+    quantity: 3,
+    clientName: 'Kojo Antwi',
+    clientEmail: 'k.antwi@accratech.com',
+    clientPhone: '+233 24 411 9820',
+    clientNotes: 'Ordering 3 units for our design studio. Seeking a volume adjustment with immediate payment in Cedis.',
+    createdAt: new Date(Date.now() - 3600000 * 20).toISOString(),
+    status: 'pending'
+  },
+  {
+    id: 'NEG-2026-002',
+    itemType: 'software',
+    itemId: 'srv-enterprise-crm',
+    itemTitle: 'Custom Enterprise CRM & Multi-Branch Operations Portal',
+    originalPrice: 35000,
+    offeredPrice: 30000,
+    quantity: 1,
+    clientName: 'Ama Serwaa',
+    clientEmail: 'a.serwaa@ghanaexpress.com',
+    clientPhone: '+233 20 892 4110',
+    clientNotes: 'Non-profit healthcare supply chain branch. Requesting commercial term adjustment for initial phase.',
+    createdAt: new Date(Date.now() - 3600000 * 48).toISOString(),
+    status: 'countered',
+    adminResponse: {
+      action: 'counter',
+      counterPrice: 32000,
+      adminNotes: 'Counter-offered at GH₵ 32,000 including 6 months complimentary DevOps standby SLA.',
+      respondedAt: new Date(Date.now() - 3600000 * 12).toISOString(),
+      adminName: 'Lead Systems Architect'
+    }
+  }
+];
 
 // Default Registered Users
 const INITIAL_USERS: ClientUser[] = [
@@ -609,6 +663,29 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     return DEFAULT_TEAM;
   });
+
+  // Price Negotiations & Dynamic Margins State
+  const [negotiations, setNegotiations] = useState<PriceNegotiation[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('drt_price_negotiations');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return DEFAULT_NEGOTIATIONS;
+  });
+
+  const [isNegotiationModalOpen, setIsNegotiationModalOpen] = useState(false);
+  const [negotiationTargetItem, setNegotiationTargetItem] = useState<{ id: string; title: string; price: number; type: 'software' | 'hardware' | 'custom_service' } | null>(null);
+
+  const openNegotiationModal = (item: { id: string; title: string; price: number; type: 'software' | 'hardware' | 'custom_service' }) => {
+    setNegotiationTargetItem(item);
+    setIsNegotiationModalOpen(true);
+  };
 
   // Device Session Fingerprint (Admin 2-device concurrency limit)
   const getCurrentDeviceSession = (): AdminDeviceSession => {
@@ -2403,9 +2480,118 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsServiceRequestModalOpen(true);
   };
 
-  // Currency helper
-  const formatPrice = (amount: number) => {
-    return `${config.currencySymbol} ${amount.toLocaleString()}`;
+  // Price adjustment calculator incorporating global and category percentages
+  const getAdjustedPrice = (amount: number, category?: 'software' | 'hardware'): number => {
+    let percent = config.globalPriceAdjustmentPercent || 0;
+    if (category === 'software' && config.softwarePriceAdjustmentPercent !== undefined) {
+      percent += config.softwarePriceAdjustmentPercent;
+    } else if (category === 'hardware' && config.hardwarePriceAdjustmentPercent !== undefined) {
+      percent += config.hardwarePriceAdjustmentPercent;
+    }
+    if (percent === 0) return amount;
+    const adjusted = Math.round(amount * (1 + percent / 100));
+    return Math.max(0, adjusted);
+  };
+
+  // Currency helper with dynamic percentage adjustments
+  const formatPrice = (amount: number, category?: 'software' | 'hardware') => {
+    const adjusted = getAdjustedPrice(amount, category);
+    return `${config.currencySymbol} ${adjusted.toLocaleString()}`;
+  };
+
+  // Price Negotiations Handlers
+  const submitNegotiation = async (data: Omit<PriceNegotiation, 'id' | 'createdAt' | 'status'>): Promise<PriceNegotiation> => {
+    const newNegotiation: PriceNegotiation = {
+      ...data,
+      id: `NEG-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
+      createdAt: new Date().toISOString(),
+      status: 'pending'
+    };
+    setNegotiations(prev => {
+      const next = [newNegotiation, ...prev];
+      localStorage.setItem('drt_price_negotiations', JSON.stringify(next));
+      return next;
+    });
+
+    try {
+      await fetch('/api/negotiations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newNegotiation)
+      });
+    } catch (err) {
+      console.warn('Negotiation sync to server warning:', err);
+    }
+    notifyLiveSync();
+    return newNegotiation;
+  };
+
+  const respondToNegotiation = async (
+    id: string, 
+    action: 'approve' | 'reject' | 'counter', 
+    counterPrice?: number, 
+    adminNotes?: string
+  ): Promise<void> => {
+    setNegotiations(prev => {
+      const next = prev.map(neg => {
+        if (neg.id === id) {
+          const newStatus: NegotiationStatus = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'countered';
+          return {
+            ...neg,
+            status: newStatus,
+            adminResponse: {
+              action,
+              counterPrice,
+              adminNotes,
+              respondedAt: new Date().toISOString(),
+              adminName: clientUser?.fullName || 'DeRoyalTech Commercial Desk'
+            }
+          };
+        }
+        return neg;
+      });
+      localStorage.setItem('drt_price_negotiations', JSON.stringify(next));
+      return next;
+    });
+
+    try {
+      await fetch(`/api/negotiations/${id}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          counterPrice,
+          adminNotes,
+          adminName: clientUser?.fullName || 'DeRoyalTech Commercial Desk'
+        })
+      });
+    } catch (err) {
+      console.warn('Respond to negotiation sync error:', err);
+    }
+    notifyLiveSync();
+  };
+
+  const updateGlobalPriceAdjustment = async (percent: number, category: 'all' | 'software' | 'hardware' = 'all'): Promise<void> => {
+    const updates: Partial<SiteConfig> = {};
+    if (category === 'all') {
+      updates.globalPriceAdjustmentPercent = percent;
+    } else if (category === 'software') {
+      updates.softwarePriceAdjustmentPercent = percent;
+    } else if (category === 'hardware') {
+      updates.hardwarePriceAdjustmentPercent = percent;
+    }
+    updateConfig(updates);
+
+    try {
+      await fetch('/api/pricing/bulk-adjustment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ percent, category })
+      });
+    } catch (err) {
+      console.warn('Bulk price adjustment sync error:', err);
+    }
+    notifyLiveSync();
   };
 
   return (
@@ -2558,7 +2744,18 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetTeamToDefault,
 
         // Admin Security & Device Sessions
-        revokeAdminSession
+        revokeAdminSession,
+
+        // Price Negotiations & Dynamic Margins
+        negotiations,
+        submitNegotiation,
+        respondToNegotiation,
+        updateGlobalPriceAdjustment,
+        getAdjustedPrice,
+        openNegotiationModal,
+        isNegotiationModalOpen,
+        setIsNegotiationModalOpen,
+        negotiationTargetItem
       }}
     >
       {children}

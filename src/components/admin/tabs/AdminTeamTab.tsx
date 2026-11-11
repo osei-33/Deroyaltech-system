@@ -16,7 +16,10 @@ import {
   UserX,
   ExternalLink,
   Award,
-  Briefcase
+  Briefcase,
+  Upload,
+  Image,
+  Camera
 } from 'lucide-react';
 import { useSite } from '../../../context/SiteContext.tsx';
 import { TeamMember } from '../../../types/index.ts';
@@ -131,6 +134,27 @@ export const AdminTeamTab: React.FC = () => {
         : [...current, resp];
       return { ...prev, responsibilities: updated };
     });
+  };
+
+  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 8 * 1024 * 1024) {
+        setRoleUpdatedToast('File exceeds 8MB size limit. Please choose a smaller photo.');
+        setTimeout(() => setRoleUpdatedToast(null), 3500);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        if (base64) {
+          setFormData(prev => ({ ...prev, avatarUrl: base64 }));
+          setRoleUpdatedToast('Profile photo uploaded successfully!');
+          setTimeout(() => setRoleUpdatedToast(null), 3000);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -363,6 +387,87 @@ export const AdminTeamTab: React.FC = () => {
             </div>
 
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 space-y-4">
+              {/* Profile Picture Uploader & Selector */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <Camera className="w-4 h-4 text-emerald-500" />
+                    <span>Member Profile Picture *</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-mono">Upload Photo or Enter URL</span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  {/* Avatar Circular Preview */}
+                  <div className="relative group shrink-0">
+                    <img
+                      src={formData.avatarUrl || SAMPLE_AVATARS[0]}
+                      alt="Preview"
+                      className="w-20 h-20 rounded-2xl object-cover border-2 border-emerald-500/40 shadow-md bg-white dark:bg-slate-900"
+                    />
+                    <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center pointer-events-none">
+                      <Image className="w-5 h-5 text-white" />
+                    </div>
+                  </div>
+
+                  {/* Upload Controls & URL */}
+                  <div className="flex-1 space-y-2 w-full">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer flex items-center gap-1.5">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload Picture</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, avatarUrl: SAMPLE_AVATARS[Math.floor(Math.random() * SAMPLE_AVATARS.length)] })}
+                        className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors flex items-center gap-1"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Random Portrait</span>
+                      </button>
+                    </div>
+
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Or paste image URL (https://...)"
+                        value={formData.avatarUrl}
+                        onChange={(e) => setFormData({ ...formData, avatarUrl: e.target.value })}
+                        className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white font-mono placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Sample Avatar Palette */}
+                <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                  <span className="text-[10px] font-semibold text-slate-400 block mb-1.5">Preset Sample Avatars:</span>
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                    {SAMPLE_AVATARS.map((sampleUrl, sIdx) => (
+                      <button
+                        key={sIdx}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, avatarUrl: sampleUrl })}
+                        className={`w-9 h-9 rounded-xl overflow-hidden shrink-0 transition-transform ${
+                          formData.avatarUrl === sampleUrl
+                            ? 'ring-2 ring-emerald-500 scale-110'
+                            : 'opacity-70 hover:opacity-100 hover:scale-105'
+                        }`}
+                      >
+                        <img src={sampleUrl} alt={`Preset ${sIdx + 1}`} className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">

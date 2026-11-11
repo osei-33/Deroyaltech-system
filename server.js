@@ -195,27 +195,176 @@ async function startServer() {
     saveData(data);
     res.json({ success: true, count: data.teamMembers.length });
   });
-  app.get("/sitemap.xml", (_req, res) => {
-    const sitemapFile = path.resolve(__dirname, "public", "sitemap.xml");
-    if (fs.existsSync(sitemapFile)) {
-      res.header("Content-Type", "application/xml");
-      return res.sendFile(sitemapFile);
-    }
+  const buildDynamicSitemapXml = (data) => {
+    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    const baseUrl = "https://deroyal.tech";
+    const urls = [
+      { loc: `${baseUrl}/`, lastmod: today, changefreq: "daily", priority: "1.0", type: "core", title: "Home - Enterprise Cloud & CRM Systems" },
+      { loc: `${baseUrl}/services`, lastmod: today, changefreq: "weekly", priority: "0.9", type: "core", title: "Services - Hybrid Cloud & DevSecOps" },
+      { loc: `${baseUrl}/projects`, lastmod: today, changefreq: "weekly", priority: "0.9", type: "core", title: "Case Studies & Production Deployments" },
+      { loc: `${baseUrl}/hardware`, lastmod: today, changefreq: "weekly", priority: "0.85", type: "core", title: "Hardware Store - Servers & Peripherals" },
+      { loc: `${baseUrl}/tracker`, lastmod: today, changefreq: "daily", priority: "0.85", type: "core", title: "Live Project Tracker & Telemetry Hub" },
+      { loc: `${baseUrl}/consultation`, lastmod: today, changefreq: "monthly", priority: "0.85", type: "core", title: "Architecture Consultation & Scoping" },
+      { loc: `${baseUrl}/knowledge-base`, lastmod: today, changefreq: "weekly", priority: "0.8", type: "core", title: "Knowledge Base & Technical Runbooks" },
+      { loc: `${baseUrl}/estimator`, lastmod: today, changefreq: "monthly", priority: "0.75", type: "core", title: "Project Budget & Cloud Estimator" },
+      { loc: `${baseUrl}/verify`, lastmod: today, changefreq: "daily", priority: "0.75", type: "core", title: "Official Document Verification Registry" },
+      { loc: `${baseUrl}/workflow`, lastmod: today, changefreq: "monthly", priority: "0.7", type: "core", title: "Engineering Lifecycle & SLA Methodology" },
+      { loc: `${baseUrl}/contact`, lastmod: today, changefreq: "monthly", priority: "0.7", type: "core", title: "Contact Engineering Desk Accra" }
+    ];
+    const services = data.services || [];
+    let indexedServices = 0;
+    services.forEach((s) => {
+      if (s.id) {
+        indexedServices++;
+        urls.push({
+          loc: `${baseUrl}/services#${encodeURIComponent(s.id)}`,
+          lastmod: today,
+          changefreq: "weekly",
+          priority: "0.8",
+          type: "service",
+          title: s.title || `Service ${s.id}`
+        });
+      }
+    });
+    const faqArticles = data.faqArticles || [];
+    let indexedArticles = 0;
+    faqArticles.forEach((art) => {
+      if (art.id) {
+        indexedArticles++;
+        urls.push({
+          loc: `${baseUrl}/knowledge-base#${encodeURIComponent(art.id)}`,
+          lastmod: art.updatedAt ? art.updatedAt.split("T")[0] : today,
+          changefreq: "weekly",
+          priority: "0.75",
+          type: "article",
+          title: art.title || `Article ${art.id}`
+        });
+      }
+    });
+    const hardware = data.hardware || [];
+    let indexedHardware = 0;
+    hardware.forEach((h) => {
+      if (h.id) {
+        indexedHardware++;
+        urls.push({
+          loc: `${baseUrl}/hardware#${encodeURIComponent(h.id)}`,
+          lastmod: today,
+          changefreq: "weekly",
+          priority: "0.7",
+          type: "hardware",
+          title: h.name || `Hardware ${h.id}`
+        });
+      }
+    });
+    const projects = data.projects || [];
+    let indexedProjects = 0;
+    projects.forEach((p) => {
+      if (p.id) {
+        indexedProjects++;
+        urls.push({
+          loc: `${baseUrl}/projects#${encodeURIComponent(p.id)}`,
+          lastmod: today,
+          changefreq: "monthly",
+          priority: "0.75",
+          type: "project",
+          title: p.title || `Project ${p.id}`
+        });
+      }
+    });
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://deroyal.tech/</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>
-  <url><loc>https://deroyal.tech/services</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://deroyal.tech/projects</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://deroyal.tech/hardware</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>weekly</changefreq><priority>0.85</priority></url>
-  <url><loc>https://deroyal.tech/tracker</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>daily</changefreq><priority>0.85</priority></url>
-  <url><loc>https://deroyal.tech/consultation</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>monthly</changefreq><priority>0.85</priority></url>
-  <url><loc>https://deroyal.tech/knowledge-base</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://deroyal.tech/estimator</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>monthly</changefreq><priority>0.75</priority></url>
-  <url><loc>https://deroyal.tech/workflow</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
-  <url><loc>https://deroyal.tech/contact</loc><lastmod>${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
-</urlset>`;
+${urls.map((u) => `  <url>
+    <loc>${u.loc}</loc>
+    <lastmod>${u.lastmod}</lastmod>
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`).join("\n")}
+</urlset>`.trim();
+    const stats = {
+      totalUrls: urls.length,
+      indexedServices,
+      indexedArticles,
+      indexedHardware,
+      indexedProjects,
+      builtAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    return { xml, stats };
+  };
+  app.get("/sitemap.xml", (_req, res) => {
+    const data = loadData();
+    const { xml } = buildDynamicSitemapXml(data);
     res.header("Content-Type", "application/xml");
     res.send(xml);
+  });
+  app.post("/api/seo/rebuild-sitemap", (_req, res) => {
+    const data = loadData();
+    const { xml, stats } = buildDynamicSitemapXml(data);
+    try {
+      const publicDir = path.resolve(__dirname, "public");
+      if (!fs.existsSync(publicDir)) {
+        fs.mkdirSync(publicDir, { recursive: true });
+      }
+      fs.writeFileSync(path.resolve(publicDir, "sitemap.xml"), xml, "utf-8");
+    } catch (e) {
+      console.warn("Could not write to public/sitemap.xml:", e);
+    }
+    res.json({ success: true, stats, xml });
+  });
+  app.get("/api/negotiations", (_req, res) => {
+    const data = loadData();
+    res.json(data.negotiations || []);
+  });
+  app.post("/api/negotiations", (req, res) => {
+    const data = loadData();
+    const newNegotiation = {
+      id: `NEG-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      status: "pending",
+      ...req.body
+    };
+    data.negotiations = [newNegotiation, ...data.negotiations || []];
+    saveData(data);
+    res.json({ success: true, negotiation: newNegotiation });
+  });
+  app.post("/api/negotiations/:id/respond", (req, res) => {
+    const data = loadData();
+    const { id } = req.params;
+    const { action, counterPrice, adminNotes, adminName } = req.body;
+    if (data.negotiations) {
+      data.negotiations = data.negotiations.map((neg) => {
+        if (neg.id === id) {
+          const newStatus = action === "approve" ? "approved" : action === "reject" ? "rejected" : "countered";
+          return {
+            ...neg,
+            status: newStatus,
+            adminResponse: {
+              action,
+              counterPrice,
+              adminNotes,
+              respondedAt: (/* @__PURE__ */ new Date()).toISOString(),
+              adminName: adminName || "DeRoyalTech Commercial Desk"
+            }
+          };
+        }
+        return neg;
+      });
+      saveData(data);
+    }
+    res.json({ success: true });
+  });
+  app.post("/api/pricing/bulk-adjustment", (req, res) => {
+    const data = loadData();
+    const { percent, category } = req.body;
+    data.config = data.config || {};
+    if (category === "all" || !category) {
+      data.config.globalPriceAdjustmentPercent = Number(percent) || 0;
+    } else if (category === "software") {
+      data.config.softwarePriceAdjustmentPercent = Number(percent) || 0;
+    } else if (category === "hardware") {
+      data.config.hardwarePriceAdjustmentPercent = Number(percent) || 0;
+    }
+    saveData(data);
+    res.json({ success: true, config: data.config });
   });
   app.get("/robots.txt", (_req, res) => {
     const robotsFile = path.resolve(__dirname, "public", "robots.txt");

@@ -23,6 +23,7 @@ import {
 import { useSite } from '../../context/SiteContext.tsx';
 import { ConsultationPage } from './ConsultationPage.tsx';
 import { TrackProjectPage } from './TrackProjectPage.tsx';
+import { ProjectWebNotificationManager } from '../tracker/ProjectWebNotificationManager.tsx';
 
 interface ClientHubPageProps {
   initialTab?: 'consultation' | 'tracker';
@@ -103,6 +104,11 @@ export const ClientHubPage: React.FC<ClientHubPageProps> = ({ initialTab }) => {
           </div>
         </div>
       </section>
+
+      {/* Real-time Web Notifications Ribbon */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <ProjectWebNotificationManager />
+      </div>
 
       {/* Render Active View without Page Reload */}
       <div className="w-full max-w-full overflow-x-hidden">

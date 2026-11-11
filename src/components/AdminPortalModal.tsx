@@ -41,7 +41,8 @@ import {
   Globe,
   PenTool,
   Zap,
-  UserCog
+  UserCog,
+  Percent
 } from 'lucide-react';
 import { useSite } from '../context/SiteContext.tsx';
 import { 
@@ -65,6 +66,7 @@ import { AdminLettersTab } from './admin/tabs/AdminLettersTab.tsx';
 import { AdminTeamTab } from './admin/tabs/AdminTeamTab.tsx';
 import { AdminProfileTab } from './admin/tabs/AdminProfileTab.tsx';
 import { AdminSeoTab } from './admin/tabs/AdminSeoTab.tsx';
+import { AdminNegotiationsTab } from './admin/tabs/AdminNegotiationsTab.tsx';
 
 interface AdminPortalModalProps {
   isOpen: boolean;
@@ -73,6 +75,7 @@ interface AdminPortalModalProps {
 
 type AdminTab = 
   | 'services' 
+  | 'negotiations'
   | 'support'
   | 'tracker'
   | 'knowledge'
@@ -591,6 +594,19 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
 
             <button
               type="button"
+              onClick={() => setActiveTab('negotiations')}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm ${
+                activeTab === 'negotiations'
+                  ? 'bg-blue-600 text-white border-blue-500 shadow-blue-500/20'
+                  : 'bg-slate-800/80 hover:bg-slate-800 text-slate-200 border-slate-700 hover:border-slate-600'
+              }`}
+            >
+              <Percent className="w-3.5 h-3.5 text-amber-400" />
+              <span>🏷️ Price Negotiations & Margins</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab('hardware')}
               className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm ${
                 activeTab === 'hardware'
@@ -678,6 +694,25 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
               </div>
               <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
                 {services.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('negotiations')}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-left whitespace-nowrap ${
+                activeTab === 'negotiations'
+                  ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Percent className="w-4 h-4 text-amber-500" />
+                <span>Price Negotiations & Margins</span>
+              </div>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-500 font-mono font-bold">
+                {config.globalPriceAdjustmentPercent !== undefined && config.globalPriceAdjustmentPercent !== 0 
+                  ? `${config.globalPriceAdjustmentPercent > 0 ? '+' : ''}${config.globalPriceAdjustmentPercent}%`
+                  : 'Manage'}
               </span>
             </button>
 
@@ -1020,6 +1055,11 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({ isOpen, onCl
 
           {/* Tab Content Panel */}
           <div className="flex-1 p-5 md:p-6 overflow-y-auto">
+
+            {/* TAB: PRICE NEGOTIATIONS & MARGINS */}
+            {activeTab === 'negotiations' && (
+              <AdminNegotiationsTab />
+            )}
 
             {/* TAB: LIVE SUPPORT CHAT */}
             {activeTab === 'support' && (

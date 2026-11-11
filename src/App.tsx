@@ -26,6 +26,7 @@ import { MobileBottomNav } from './components/MobileBottomNav.tsx';
 import { ScrollToTopButton } from './components/common/ScrollToTopButton.tsx';
 import { VisitorAnnouncementModal } from './components/common/VisitorAnnouncementModal.tsx';
 import { MetaTagManager } from './components/common/MetaTagManager.tsx';
+import { PriceNegotiationModal } from './components/common/PriceNegotiationModal.tsx';
 import { useInactivityLogout } from './hooks/useInactivityLogout.ts';
 import { CaseStudy, HardwareProduct, QuoteItem, CompletedProject } from './types/index.ts';
 import { ShieldAlert, X } from 'lucide-react';
@@ -249,6 +250,9 @@ function AppContent() {
 
       {/* Service Request & Order Modal */}
       <ServiceRequestModal />
+
+      {/* Commercial Price Negotiation Modal */}
+      <PriceNegotiationModal />
 
       {/* Thumb-Zone Ergonomic Mobile Bottom Navigation Bar */}
       <MobileBottomNav

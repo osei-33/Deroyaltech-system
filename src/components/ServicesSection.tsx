@@ -9,9 +9,10 @@ import {
   CheckCircle2, 
   ArrowRight, 
   Layers, 
-  ChevronRight,
   DollarSign,
-  Sparkles
+  Sparkles,
+  Tag,
+  ChevronRight
 } from 'lucide-react';
 import { useSite } from '../context/SiteContext.tsx';
 import { ServiceItem, ServiceCategory } from '../types/index.ts';
@@ -25,7 +26,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
   onSelectServiceForEstimate,
   openConsultation
 }) => {
-  const { services, formatPrice, openServiceRequestModal } = useSite();
+  const { services, formatPrice, openServiceRequestModal, openNegotiationModal } = useSite();
   const [selectedServiceId, setSelectedServiceId] = useState<string>(services[0]?.id || 'web-software');
   const [categoryFilter, setCategoryFilter] = useState<'all' | ServiceCategory>('all');
 
@@ -263,6 +264,20 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
                 </button>
 
                 <button
+                  onClick={() => openNegotiationModal({
+                    id: activeService.id,
+                    title: activeService.title,
+                    price: activeService.startingPrice || 15000,
+                    type: 'software'
+                  })}
+                  className="px-4 py-2.5 text-xs sm:text-sm font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-300 dark:border-amber-800 rounded-lg shadow-2xs transition-colors flex items-center gap-2"
+                  title="Negotiate software project pricing or tailored scope"
+                >
+                  <Tag className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>Negotiate Terms</span>
+                </button>
+
+                <button
                   onClick={() => onSelectServiceForEstimate(activeService.id)}
                   className="px-4 py-2.5 text-xs sm:text-sm font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 rounded-lg shadow-2xs transition-colors flex items-center gap-2"
                 >
@@ -274,7 +289,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
                   onClick={openConsultation}
                   className="px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors"
                 >
-                  Schedule Solution Architecture Call
+                  Schedule Architecture Call
                 </button>
               </div>
             </div>

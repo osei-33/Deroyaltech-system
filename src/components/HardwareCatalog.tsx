@@ -9,7 +9,8 @@ import {
   Truck, 
   HelpCircle,
   Activity,
-  Play
+  Play,
+  Tag
 } from 'lucide-react';
 import { HARDWARE_HERO_IMAGE } from '../data/companyData.ts';
 import { HardwareCategory, HardwareProduct } from '../types/index.ts';
@@ -29,7 +30,7 @@ export const HardwareCatalog: React.FC<HardwareCatalogProps> = ({
   quoteItemCount,
   openConsultation
 }) => {
-  const { hardwareProducts, formatPrice, config } = useSite();
+  const { hardwareProducts, formatPrice, config, openNegotiationModal } = useSite();
   const [selectedCategory, setSelectedCategory] = useState<HardwareCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [addedProductId, setAddedProductId] = useState<string | null>(null);
@@ -276,22 +277,38 @@ export const HardwareCatalog: React.FC<HardwareCatalogProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
                     {/* Explicit 'View Demo' Button */}
                     <button
                       type="button"
                       onClick={() => setTelemetryModalProduct(product)}
-                      className="min-h-[40px] px-2.5 py-1.5 text-xs font-bold rounded-lg border border-blue-500/40 bg-blue-50/80 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white transition-all flex items-center gap-1 shadow-sm active:scale-95"
+                      className="min-h-[38px] px-2.5 py-1 text-xs font-bold rounded-lg border border-blue-500/40 bg-blue-50/80 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white transition-all flex items-center gap-1 shadow-sm active:scale-95"
                       title="Launch Hardware Live Telemetry Demo"
                     >
                       <Activity className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 group-hover:text-white" />
-                      <span>View Demo</span>
+                      <span>Demo</span>
+                    </button>
+
+                    {/* Negotiate Price Button */}
+                    <button
+                      type="button"
+                      onClick={() => openNegotiationModal({
+                        id: product.id,
+                        title: product.name,
+                        price: product.price,
+                        type: 'hardware'
+                      })}
+                      className="min-h-[38px] px-2.5 py-1 text-xs font-bold rounded-lg border border-amber-500/40 bg-amber-50/80 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 hover:bg-amber-500 hover:text-white dark:hover:bg-amber-500 dark:hover:text-white transition-all flex items-center gap-1 shadow-sm active:scale-95"
+                      title="Negotiate wholesale or custom project pricing"
+                    >
+                      <Tag className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                      <span>Negotiate</span>
                     </button>
 
                     {/* Add to Quote Button */}
                     <button
                       onClick={() => handleAdd(product)}
-                      className={`min-h-[40px] px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1 active:scale-95 ${
+                      className={`min-h-[38px] px-3 py-1 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1 active:scale-95 ${
                         isJustAdded
                           ? 'bg-emerald-600 text-white'
                           : 'bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white'
