@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldCheck,
   Fingerprint,
@@ -16,9 +17,18 @@ import {
   CheckCircle2,
   ShieldAlert,
   Activity,
-  Clock
+  Clock,
+  Download,
+  Copy,
+  Check,
+  FileCode2,
+  FileJson,
+  X,
+  Share2,
+  Loader2
 } from 'lucide-react';
 import { useSite } from '../../context/SiteContext.tsx';
+import { WebAuthnCredential } from '../../types/index.ts';
 import {
   checkWebAuthnCapabilities,
   registerHardwareBiometricPasskey,
@@ -27,6 +37,8 @@ import {
   authenticateVirtualFido2Biometric,
   revokeBiometricCredential,
   detectBiometricDeviceName,
+  buildPublicBiometricBackupBundle,
+  PublicBiometricKeyBackupBundle,
   WebAuthnCapabilities,
   WebAuthnActionResult
 } from '../../utils/webauthn.ts';
@@ -48,9 +60,28 @@ export const ClientSecurityDashboard: React.FC = () => {
   const [capabilities, setCapabilities] = useState<WebAuthnCapabilities | null>(null);
   const [deviceLabel, setDeviceLabel] = useState(() => detectBiometricDeviceName());
   const [isBusy, setIsBusy] = useState(false);
+  const [activeRegisterType, setActiveRegisterType] = useState<
+    'platform' | 'cross-platform' | 'virtual-fido2' | null
+  >(null);
+  const [recentlyLinkedType, setRecentlyLinkedType] = useState<
+    'platform' | 'cross-platform' | 'virtual-fido2' | null
+  >(null);
+  const [recentlyLinkedCredId, setRecentlyLinkedCredId] = useState<string | null>(null);
   const [lastAttachment, setLastAttachment] = useState<'platform' | 'cross-platform'>('platform');
   const [feedback, setFeedback] = useState<WebAuthnFeedbackState | null>(null);
   const [showEnclaveConfirm, setShowEnclaveConfirm] = useState(false);
+
+  // Public Biometric Key Export State (Offline Backup & Cross-Device Sync)
+  const [exportBundle, setExportBundle] = useState<PublicBiometricKeyBackupBundle | null>(null);
+  const [exportScopeLabel, setExportScopeLabel] = useState<string>('All Enrolled Passkeys');
+  const [exportFormat, setExportFormat] = useState<'json' | 'pem'>('json');
+  const [isPreparingExport, setIsPreparingExport] = useState(false);
+  const [copiedPayload, setCopiedPayload] = useState(false);
+  const [downloadedNotice, setDownloadedNotice] = useState(false);
+
+  const linkSuccessTimerRef = useRef<number | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
+  const downloadTimerRef = useRef<number | null>(null);
 
   const credentials = clientUser?.webAuthnCredentials || [];
 
@@ -69,6 +100,31 @@ export const ClientSecurityDashboard: React.FC = () => {
     };
   }, [clientUser?.email, credentials.length]);
 
+  useEffect(() => {
+    return () => {
+      if (linkSuccessTimerRef.current) window.clearTimeout(linkSuccessTimerRef.current);
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+      if (downloadTimerRef.current) window.clearTimeout(downloadTimerRef.current);
+    };
+  }, []);
+
+  const triggerRegistrationSuccessAnimation = (
+    type: 'platform' | 'cross-platform' | 'virtual-fido2',
+    credentialId?: string
+  ) => {
+    if (linkSuccessTimerRef.current) {
+      window.clearTimeout(linkSuccessTimerRef.current);
+    }
+    setRecentlyLinkedType(type);
+    if (credentialId) {
+      setRecentlyLinkedCredId(credentialId);
+    }
+    linkSuccessTimerRef.current = window.setTimeout(() => {
+      setRecentlyLinkedType(null);
+      setRecentlyLinkedCredId(null);
+    }, 3400);
+  };
+
   const reportFailure = (res: WebAuthnActionResult, mode: 'login' | 'enroll') => {
     setFeedback({
       status: 'error',
@@ -86,6 +142,8 @@ export const ClientSecurityDashboard: React.FC = () => {
     if (!clientUser) return;
     setLastAttachment(attachment);
     setShowEnclaveConfirm(false);
+    setRecentlyLinkedType(null);
+    setActiveRegisterType(attachment);
     setIsBusy(true);
     setFeedback({
       status: 'scanning',
@@ -110,9 +168,11 @@ export const ClientSecurityDashboard: React.FC = () => {
     });
 
     setIsBusy(false);
+    setActiveRegisterType(null);
 
     if (res.success && res.credential) {
       attachBiometricCredential(clientUser.email, res.credential);
+      triggerRegistrationSuccessAnimation(attachment, res.credential.id);
       setFeedback({
         status: 'success',
         mode: 'enroll',
@@ -128,6 +188,8 @@ export const ClientSecurityDashboard: React.FC = () => {
   const handleRegisterVirtualFido2 = async () => {
     if (!clientUser) return;
     setShowEnclaveConfirm(false);
+    setRecentlyLinkedType(null);
+    setActiveRegisterType('virtual-fido2');
     setIsBusy(true);
     setFeedback({
       status: 'scanning',
@@ -144,9 +206,11 @@ export const ClientSecurityDashboard: React.FC = () => {
     });
 
     setIsBusy(false);
+    setActiveRegisterType(null);
 
     if (res.success && res.credential) {
       attachBiometricCredential(clientUser.email, res.credential);
+      triggerRegistrationSuccessAnimation('virtual-fido2', res.credential.id);
       setFeedback({
         status: 'success',
         mode: 'enroll',
@@ -204,6 +268,9 @@ export const ClientSecurityDashboard: React.FC = () => {
     });
     setIsBusy(false);
     removeBiometricCredential(clientUser.id, credentialId);
+    if (exportBundle && exportBundle.publicCredentials.some((c) => c.credentialId === credentialId)) {
+      setExportBundle(null);
+    }
     setFeedback(
       res.success
         ? {
@@ -220,6 +287,81 @@ export const ClientSecurityDashboard: React.FC = () => {
             errorReason: 'UNKNOWN'
           }
     );
+  };
+
+  const handleOpenPublicKeyExport = async (targetCredential?: WebAuthnCredential) => {
+    if (!clientUser) return;
+    const listToExport = targetCredential ? [targetCredential] : credentials;
+    if (listToExport.length === 0) return;
+
+    setIsPreparingExport(true);
+    setCopiedPayload(false);
+    setDownloadedNotice(false);
+    setExportScopeLabel(
+      targetCredential
+        ? targetCredential.deviceName
+        : `Full Account Public Keyring (${listToExport.length} Key${listToExport.length > 1 ? 's' : ''})`
+    );
+    const bundle = await buildPublicBiometricBackupBundle({
+      user: clientUser,
+      credentials: listToExport
+    });
+    setExportBundle(bundle);
+    setIsPreparingExport(false);
+  };
+
+  const getExportText = (): string => {
+    if (!exportBundle) return '';
+    if (exportFormat === 'json') {
+      return JSON.stringify(exportBundle, null, 2);
+    }
+    return exportBundle.publicCredentials
+      .map(
+        (entry) =>
+          `# Device: ${entry.deviceName}\n# Credential ID: ${entry.credentialId}\n# Algorithm: ${entry.algorithmLabel}\n# SHA-256: ${entry.sha256Fingerprint}\n${entry.publicKeyPem}`
+      )
+      .join('\n\n');
+  };
+
+  const handleCopyExportPayload = async () => {
+    const content = getExportText();
+    if (!content) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedPayload(true);
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopiedPayload(false), 2400);
+    } catch {
+      // Fallback ignored if clipboard blocked
+    }
+  };
+
+  const handleDownloadExportFile = () => {
+    if (!exportBundle || !clientUser) return;
+    const content = getExportText();
+    const ext = exportFormat === 'json' ? 'json' : 'pem';
+    const mime = exportFormat === 'json' ? 'application/json' : 'application/x-pem-file';
+    const safeUser = (clientUser.email.split('@')[0] || 'client').replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
+    const dateSlug = new Date().toISOString().slice(0, 10);
+    const scopeSlug =
+      exportBundle.publicCredentials.length === 1
+        ? exportBundle.publicCredentials[0].credentialId.slice(0, 8).toLowerCase()
+        : 'all-keys';
+    const filename = `deroyaltech-${safeUser}-public-biometrics-${scopeSlug}-${dateSlug}.${ext}`;
+
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setDownloadedNotice(true);
+    if (downloadTimerRef.current) window.clearTimeout(downloadTimerRef.current);
+    downloadTimerRef.current = window.setTimeout(() => setDownloadedNotice(false), 2600);
   };
 
   if (!clientUser) {
@@ -489,35 +631,228 @@ export const ClientSecurityDashboard: React.FC = () => {
           </div>
 
           <div className="space-y-2.5 pt-1">
-            <button
+            {/* Primary Device Biometric Registration Button with Smooth Success Animation */}
+            <motion.button
               type="button"
               disabled={isBusy}
+              whileTap={!isBusy ? { scale: 0.985 } : undefined}
+              animate={
+                recentlyLinkedType === 'platform'
+                  ? { scale: [1, 1.03, 1] }
+                  : { scale: 1 }
+              }
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
               onClick={() => handleRegisterBiometric('platform')}
-              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:opacity-60 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
+              className={`relative overflow-hidden w-full py-3 px-4 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                recentlyLinkedType === 'platform'
+                  ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 ring-2 ring-emerald-400/70 shadow-lg shadow-emerald-500/25'
+                  : 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:opacity-65 shadow-sm'
+              }`}
             >
-              <Fingerprint className="w-4 h-4" />
-              <span>Register Device Biometrics (Touch ID / Face ID / Windows Hello)</span>
-            </button>
+              {recentlyLinkedType === 'platform' && (
+                <motion.span
+                  aria-hidden="true"
+                  initial={{ x: '-120%', opacity: 0.6 }}
+                  animate={{ x: '220%', opacity: 0 }}
+                  transition={{ duration: 0.9, ease: 'easeOut' }}
+                  className="pointer-events-none absolute inset-y-0 w-1/2 -skew-x-12 bg-gradient-to-r from-transparent via-white/35 to-transparent"
+                />
+              )}
+              <AnimatePresence mode="wait" initial={false}>
+                {recentlyLinkedType === 'platform' ? (
+                  <motion.span
+                    key="platform-linked"
+                    initial={{ opacity: 0, y: 6, scale: 0.92 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                    transition={{ duration: 0.25 }}
+                    className="relative z-10 flex items-center gap-2"
+                  >
+                    <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
+                      <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <motion.path
+                          d="M5 13l4 4L19 7"
+                          initial={{ pathLength: 0 }}
+                          animate={{ pathLength: 1 }}
+                          transition={{ duration: 0.4, ease: 'easeOut' }}
+                        />
+                      </svg>
+                    </span>
+                    <span>Biometric Passkey Linked!</span>
+                  </motion.span>
+                ) : activeRegisterType === 'platform' ? (
+                  <motion.span
+                    key="platform-scanning"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="relative z-10 flex items-center gap-2"
+                  >
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Verifying Device Biometrics...</span>
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="platform-idle"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="relative z-10 flex items-center gap-2"
+                  >
+                    <Fingerprint className="w-4 h-4" />
+                    <span>Register Device Biometrics (Touch ID / Face ID / Windows Hello)</span>
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </motion.button>
 
-            <button
+            {/* Hardware USB / NFC Key Button with Smooth Success Animation */}
+            <motion.button
               type="button"
               disabled={isBusy}
+              whileTap={!isBusy ? { scale: 0.985 } : undefined}
+              animate={
+                recentlyLinkedType === 'cross-platform'
+                  ? { scale: [1, 1.03, 1] }
+                  : { scale: 1 }
+              }
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
               onClick={() => handleRegisterBiometric('cross-platform')}
-              className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-60 text-white text-xs font-semibold flex items-center justify-center gap-2 border border-slate-700 transition-colors"
+              className={`relative overflow-hidden w-full py-2.5 px-4 rounded-xl text-white text-xs font-semibold flex items-center justify-center gap-2 border transition-all ${
+                recentlyLinkedType === 'cross-platform'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 border-emerald-400 ring-2 ring-emerald-400/60 shadow-lg shadow-emerald-500/20'
+                  : 'bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-65 border-slate-700'
+              }`}
             >
-              <KeyRound className="w-4 h-4 text-amber-400" />
-              <span>Register Hardware USB / NFC Security Key</span>
-            </button>
+              {recentlyLinkedType === 'cross-platform' && (
+                <motion.span
+                  aria-hidden="true"
+                  initial={{ x: '-120%', opacity: 0.55 }}
+                  animate={{ x: '220%', opacity: 0 }}
+                  transition={{ duration: 0.9, ease: 'easeOut' }}
+                  className="pointer-events-none absolute inset-y-0 w-1/2 -skew-x-12 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                />
+              )}
+              <AnimatePresence mode="wait" initial={false}>
+                {recentlyLinkedType === 'cross-platform' ? (
+                  <motion.span
+                    key="usb-linked"
+                    initial={{ opacity: 0, y: 6, scale: 0.92 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                    className="relative z-10 flex items-center gap-2 font-bold"
+                  >
+                    <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
+                      <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <motion.path
+                          d="M5 13l4 4L19 7"
+                          initial={{ pathLength: 0 }}
+                          animate={{ pathLength: 1 }}
+                          transition={{ duration: 0.4, ease: 'easeOut' }}
+                        />
+                      </svg>
+                    </span>
+                    <span>Hardware Key Linked!</span>
+                  </motion.span>
+                ) : activeRegisterType === 'cross-platform' ? (
+                  <motion.span
+                    key="usb-scanning"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="relative z-10 flex items-center gap-2"
+                  >
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                    <span>Waiting for USB / NFC Security Key...</span>
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="usb-idle"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="relative z-10 flex items-center gap-2"
+                  >
+                    <KeyRound className="w-4 h-4 text-amber-400" />
+                    <span>Register Hardware USB / NFC Security Key</span>
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </motion.button>
 
-            <button
+            {/* Cryptographic FIDO2 Enclave Button with Smooth Success Animation */}
+            <motion.button
               type="button"
               disabled={isBusy}
+              whileTap={!isBusy ? { scale: 0.985 } : undefined}
+              animate={
+                recentlyLinkedType === 'virtual-fido2'
+                  ? { scale: [1, 1.03, 1] }
+                  : { scale: 1 }
+              }
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
               onClick={() => setShowEnclaveConfirm(true)}
-              className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/70 dark:hover:bg-slate-800 disabled:opacity-60 text-slate-700 dark:text-cyan-300 text-xs font-semibold flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700 transition-colors"
+              className={`relative overflow-hidden w-full py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 border transition-all ${
+                recentlyLinkedType === 'virtual-fido2'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-400 ring-2 ring-emerald-400/60 shadow-lg shadow-emerald-500/20 font-bold'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/70 dark:hover:bg-slate-800 disabled:opacity-65 text-slate-700 dark:text-cyan-300 border-slate-200 dark:border-slate-700'
+              }`}
             >
-              <ScanFace className="w-4 h-4" />
-              <span>Enroll Cryptographic FIDO2 Enclave Passkey</span>
-            </button>
+              {recentlyLinkedType === 'virtual-fido2' && (
+                <motion.span
+                  aria-hidden="true"
+                  initial={{ x: '-120%', opacity: 0.55 }}
+                  animate={{ x: '220%', opacity: 0 }}
+                  transition={{ duration: 0.9, ease: 'easeOut' }}
+                  className="pointer-events-none absolute inset-y-0 w-1/2 -skew-x-12 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                />
+              )}
+              <AnimatePresence mode="wait" initial={false}>
+                {recentlyLinkedType === 'virtual-fido2' ? (
+                  <motion.span
+                    key="enclave-linked"
+                    initial={{ opacity: 0, y: 6, scale: 0.92 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                    className="relative z-10 flex items-center gap-2"
+                  >
+                    <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
+                      <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <motion.path
+                          d="M5 13l4 4L19 7"
+                          initial={{ pathLength: 0 }}
+                          animate={{ pathLength: 1 }}
+                          transition={{ duration: 0.4, ease: 'easeOut' }}
+                        />
+                      </svg>
+                    </span>
+                    <span>Enclave Key Linked!</span>
+                  </motion.span>
+                ) : activeRegisterType === 'virtual-fido2' ? (
+                  <motion.span
+                    key="enclave-scanning"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="relative z-10 flex items-center gap-2"
+                  >
+                    <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                    <span>Provisioning ECDSA P-256 Enclave...</span>
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="enclave-idle"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="relative z-10 flex items-center gap-2"
+                  >
+                    <ScanFace className="w-4 h-4" />
+                    <span>Enroll Cryptographic FIDO2 Enclave Passkey</span>
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </motion.button>
           </div>
 
           <div className="p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200/70 dark:border-blue-900/50 text-[11px] text-slate-600 dark:text-slate-400 flex items-start gap-2">
@@ -528,19 +863,157 @@ export const ClientSecurityDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Registered Credentials List */}
+        {/* Right: Registered Credentials List & Public Key Export */}
         <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4 shadow-sm">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Activity className="w-4 h-4 text-blue-600 dark:text-cyan-400" />
                 <span>Registered Biometric Passkeys ({credentials.length})</span>
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Test live cryptographic verification or revoke lost devices
+                Test live cryptographic verification, export public keys for backup, or revoke lost devices
               </p>
             </div>
+
+            {credentials.length > 0 && (
+              <button
+                type="button"
+                disabled={isPreparingExport}
+                onClick={() => handleOpenPublicKeyExport()}
+                className="self-start sm:self-auto px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 text-xs font-bold text-blue-700 dark:text-cyan-300 flex items-center gap-1.5 transition-colors shrink-0"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>{isPreparingExport ? 'Preparing...' : 'Export Public Keys'}</span>
+              </button>
+            )}
           </div>
+
+          {/* Interactive Public Key Backup & Cross-Device Sync Drawer */}
+          <AnimatePresence>
+            {exportBundle && (
+              <motion.div
+                initial={{ opacity: 0, y: -8, scale: 0.99 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.99 }}
+                transition={{ duration: 0.22 }}
+                className="p-4 rounded-2xl bg-slate-950 border border-cyan-500/40 text-slate-100 space-y-3 shadow-lg"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-mono uppercase tracking-wider font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        Public Key Only · Safe Backup
+                      </span>
+                      <span className="text-[11px] font-mono text-slate-400">
+                        RP: {exportBundle.relyingPartyId}
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-bold text-white truncate">
+                      Offline Public Key Export — {exportScopeLabel}
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      Contains asymmetric SPKI public keys & SHA-256 verification fingerprints for cross-device audit or offline archival. Private keys remain hardware-locked.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setExportBundle(null)}
+                    aria-label="Close public key export panel"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Fingerprint Verification Badges */}
+                <div className="space-y-1.5">
+                  {exportBundle.publicCredentials.map((entry) => (
+                    <div
+                      key={entry.credentialId}
+                      className="px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]"
+                    >
+                      <span className="font-semibold text-cyan-300 truncate">{entry.deviceName}</span>
+                      <span className="font-mono text-[10px] text-slate-300 break-all">
+                        {entry.sha256Fingerprint}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Format Tabs + Copy/Download Actions */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <div className="inline-flex p-1 rounded-xl bg-slate-900 border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setExportFormat('json')}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-colors ${
+                        exportFormat === 'json'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <FileJson className="w-3.5 h-3.5" />
+                      <span>Backup Bundle (.json)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExportFormat('pem')}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-colors ${
+                        exportFormat === 'pem'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <FileCode2 className="w-3.5 h-3.5" />
+                      <span>SPKI Public Key (.pem)</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyExportPayload}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors"
+                    >
+                      {copiedPayload ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-300">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Copy Key</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadExportFile}
+                      className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-xs font-bold text-white flex items-center gap-1.5 shadow-sm transition-all"
+                    >
+                      {downloadedNotice ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                          <span>Saved .{exportFormat}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download .{exportFormat}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <pre className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[10px] font-mono text-cyan-200/90 max-h-48 overflow-auto leading-relaxed whitespace-pre-wrap break-all">
+                  {getExportText()}
+                </pre>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {credentials.length === 0 ? (
             <div className="p-8 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 text-center space-y-2">
@@ -554,75 +1027,107 @@ export const ClientSecurityDashboard: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-3">
-              {credentials.map((cred) => (
-                <div
-                  key={cred.id}
-                  className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-blue-600/10 dark:bg-blue-500/20 text-blue-600 dark:text-cyan-400 border border-blue-500/20 flex items-center justify-center shrink-0">
-                      {cred.authenticatorType === 'cross-platform' ? (
-                        <KeyRound className="w-5 h-5" />
-                      ) : cred.authenticatorType === 'virtual-fido2' ? (
-                        <ScanFace className="w-5 h-5" />
-                      ) : cred.deviceName.toLowerCase().includes('phone') ? (
-                        <Smartphone className="w-5 h-5" />
-                      ) : (
-                        <Laptop className="w-5 h-5" />
-                      )}
+              {credentials.map((cred) => {
+                const isJustLinked = recentlyLinkedCredId === cred.id;
+                return (
+                  <motion.div
+                    key={cred.id}
+                    initial={isJustLinked ? { opacity: 0, y: 8, scale: 0.98 } : false}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                    className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                      isJustLinked
+                        ? 'bg-emerald-50/80 dark:bg-emerald-950/25 border-emerald-400 dark:border-emerald-600/70 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div
+                        className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                          isJustLinked
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                            : 'bg-blue-600/10 dark:bg-blue-500/20 text-blue-600 dark:text-cyan-400 border-blue-500/20'
+                        }`}
+                      >
+                        {cred.authenticatorType === 'cross-platform' ? (
+                          <KeyRound className="w-5 h-5" />
+                        ) : cred.authenticatorType === 'virtual-fido2' ? (
+                          <ScanFace className="w-5 h-5" />
+                        ) : cred.deviceName.toLowerCase().includes('phone') ? (
+                          <Smartphone className="w-5 h-5" />
+                        ) : (
+                          <Laptop className="w-5 h-5" />
+                        )}
+                      </div>
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
+                            {cred.deviceName}
+                          </span>
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-cyan-300 border border-blue-200 dark:border-blue-800">
+                            {cred.authenticatorType === 'cross-platform'
+                              ? 'Hardware Key'
+                              : cred.authenticatorType === 'virtual-fido2'
+                              ? 'FIDO2 Enclave'
+                              : 'Platform Biometric'}
+                          </span>
+                          {isJustLinked && (
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 font-bold">
+                              Newly Linked
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                          <span>ID: {cred.id.slice(0, 14)}...</span>
+                          <span>Alg: {cred.algorithm === -257 ? 'RS256' : 'ES256 P-256'}</span>
+                          <span>Sign-ins: {cred.counter || 0}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                          <Clock className="w-3 h-3" />
+                          <span>
+                            Added {new Date(cred.createdAt).toLocaleDateString()}
+                            {cred.lastUsedAt
+                              ? ` · Last used ${new Date(cred.lastUsedAt).toLocaleString()}`
+                              : ''}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
-                          {cred.deviceName}
-                        </span>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-cyan-300 border border-blue-200 dark:border-blue-800">
-                          {cred.authenticatorType === 'cross-platform'
-                            ? 'Hardware Key'
-                            : cred.authenticatorType === 'virtual-fido2'
-                            ? 'FIDO2 Enclave'
-                            : 'Platform Biometric'}
-                        </span>
-                      </div>
-                      <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                        <span>ID: {cred.id.slice(0, 14)}...</span>
-                        <span>Alg: {cred.algorithm === -257 ? 'RS256' : 'ES256 P-256'}</span>
-                        <span>Sign-ins: {cred.counter || 0}</span>
-                      </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                        <Clock className="w-3 h-3" />
-                        <span>
-                          Added {new Date(cred.createdAt).toLocaleDateString()}
-                          {cred.lastUsedAt
-                            ? ` · Last used ${new Date(cred.lastUsedAt).toLocaleString()}`
-                            : ''}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => handleTestVerification(cred.authenticatorType)}
-                      className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
-                    >
-                      Verify Live
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => handleRevoke(cred.id)}
-                      title="Revoke Passkey"
-                      aria-label={`Revoke biometric credential ${cred.deviceName}`}
-                      className="p-2 rounded-lg text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 border border-transparent hover:border-red-200 dark:hover:border-red-900 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => handleOpenPublicKeyExport(cred)}
+                        title="Export Public Key (JSON / PEM)"
+                        aria-label={`Export public key for ${cred.deviceName}`}
+                        className="px-2.5 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 text-xs font-semibold text-blue-700 dark:text-cyan-300 flex items-center gap-1 transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Export Key</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => handleTestVerification(cred.authenticatorType)}
+                        className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
+                      >
+                        Verify Live
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => handleRevoke(cred.id)}
+                        title="Revoke Passkey"
+                        aria-label={`Revoke biometric credential ${cred.deviceName}`}
+                        className="p-2 rounded-lg text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 border border-transparent hover:border-red-200 dark:hover:border-red-900 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
             </div>
           )}
         </div>

@@ -865,3 +865,105 @@ export async function revokeBiometricCredential(params: {
     };
   }
 }
+
+export interface PublicBiometricKeyExportEntry {
+  credentialId: string;
+  rawId: string;
+  deviceName: string;
+  authenticatorType: WebAuthnCredential['authenticatorType'];
+  algorithm: number;
+  algorithmLabel: string;
+  transports: string[];
+  counter: number;
+  createdAt: string;
+  lastUsedAt?: string;
+  publicKeySpki: string;
+  publicKeyPem: string;
+  sha256Fingerprint: string;
+}
+
+export interface PublicBiometricKeyBackupBundle {
+  schema: 'deroyaltech-webauthn-public-backup-v1';
+  exportedAt: string;
+  relyingPartyId: string;
+  keySecurityNotice: string;
+  account: {
+    id: string;
+    email: string;
+    fullName: string;
+    company: string;
+  };
+  totalCredentials: number;
+  publicCredentials: PublicBiometricKeyExportEntry[];
+}
+
+export function spkiBase64UrlToPem(spkiBase64Url: string): string {
+  const clean = (spkiBase64Url || '').trim();
+  if (!clean) {
+    return '-----BEGIN PUBLIC KEY-----\n(Public SPKI key unavailable for this legacy credential)\n-----END PUBLIC KEY-----';
+  }
+  const padding = '='.repeat((4 - (clean.length % 4)) % 4);
+  const standardBase64 = (clean + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const lines = standardBase64.match(/.{1,64}/g) || [standardBase64];
+  return `-----BEGIN PUBLIC KEY-----\n${lines.join('\n')}\n-----END PUBLIC KEY-----`;
+}
+
+export async function computePublicKeyFingerprint(spkiBase64Url: string, fallbackId?: string): Promise<string> {
+  try {
+    const sourceBytes = spkiBase64Url
+      ? new Uint8Array(base64UrlToArrayBuffer(spkiBase64Url))
+      : new TextEncoder().encode(fallbackId || 'empty-key');
+    const digest = await crypto.subtle.digest('SHA-256', sourceBytes);
+    const hexParts = Array.from(new Uint8Array(digest)).map((b) =>
+      b.toString(16).toUpperCase().padStart(2, '0')
+    );
+    return `SHA256:${hexParts.join(':')}`;
+  } catch {
+    return 'SHA256:UNAVAILABLE';
+  }
+}
+
+export async function buildPublicBiometricBackupBundle(params: {
+  user: ClientUser;
+  credentials: WebAuthnCredential[];
+  rpId?: string;
+}): Promise<PublicBiometricKeyBackupBundle> {
+  const publicCredentials: PublicBiometricKeyExportEntry[] = await Promise.all(
+    params.credentials.map(async (cred) => {
+      const spki = cred.publicKeySpki || '';
+      const fingerprint = await computePublicKeyFingerprint(spki, cred.id);
+      return {
+        credentialId: cred.id,
+        rawId: cred.rawId || cred.id,
+        deviceName: cred.deviceName,
+        authenticatorType: cred.authenticatorType,
+        algorithm: cred.algorithm,
+        algorithmLabel: cred.algorithm === -257 ? 'RS256 (RSASSA-PKCS1-v1_5 SHA-256)' : 'ES256 (ECDSA P-256 SHA-256)',
+        transports: cred.transports && cred.transports.length > 0 ? cred.transports : ['internal'],
+        counter: cred.counter || 0,
+        createdAt: cred.createdAt,
+        lastUsedAt: cred.lastUsedAt,
+        publicKeySpki: spki,
+        publicKeyPem: spkiBase64UrlToPem(spki),
+        sha256Fingerprint: fingerprint
+      };
+    })
+  );
+
+  return {
+    schema: 'deroyaltech-webauthn-public-backup-v1',
+    exportedAt: new Date().toISOString(),
+    relyingPartyId: params.rpId || (typeof window !== 'undefined' ? window.location.hostname : 'deroyal.tech'),
+    keySecurityNotice:
+      'PUBLIC BIOMETRIC KEYS ONLY — Safe for offline backup and cross-device verification. Private keys never leave your authenticator or enclave.',
+    account: {
+      id: params.user.id,
+      email: params.user.email,
+      fullName: params.user.fullName,
+      company: params.user.company
+    },
+    totalCredentials: publicCredentials.length,
+    publicCredentials
+  };
+}
+
