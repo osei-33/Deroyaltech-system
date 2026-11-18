@@ -27,9 +27,11 @@ import { ScrollToTopButton } from './components/common/ScrollToTopButton.tsx';
 import { VisitorAnnouncementModal } from './components/common/VisitorAnnouncementModal.tsx';
 import { MetaTagManager } from './components/common/MetaTagManager.tsx';
 import { PriceNegotiationModal } from './components/common/PriceNegotiationModal.tsx';
+import { ClientServiceNotificationModal } from './components/common/ClientServiceNotificationModal.tsx';
+import { GlobalNotificationToaster } from './components/common/GlobalNotificationToaster.tsx';
 import { useInactivityLogout } from './hooks/useInactivityLogout.ts';
 import { CaseStudy, HardwareProduct, QuoteItem, CompletedProject } from './types/index.ts';
-import { ShieldAlert, X } from 'lucide-react';
+import { ShieldAlert, X, Clock, RotateCcw } from 'lucide-react';
 
 function AppContent() {
   const { 
@@ -44,7 +46,14 @@ function AppContent() {
     authRedirectTarget
   } = useSite();
 
-  const { inactivityNotice, dismissNotice } = useInactivityLogout();
+  const {
+    inactivityNotice,
+    dismissNotice,
+    isWarningVisible,
+    secondsRemaining,
+    warningTotalSeconds,
+    stayLoggedIn
+  } = useInactivityLogout();
 
   // Dual-Theme: Dark Mode by default for sleek modern tech aesthetic
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -254,6 +263,12 @@ function AppContent() {
       {/* Commercial Price Negotiation Modal */}
       <PriceNegotiationModal />
 
+      {/* Client Service Notification Modal */}
+      <ClientServiceNotificationModal />
+
+      {/* Global Real-Time Web & In-App Notification Toasts */}
+      <GlobalNotificationToaster />
+
       {/* Thumb-Zone Ergonomic Mobile Bottom Navigation Bar */}
       <MobileBottomNav
         darkMode={darkMode}
@@ -264,9 +279,108 @@ function AppContent() {
         openAdmin={() => setIsAdminOpen(true)}
       />
 
+      {/* Live Inactivity Countdown Warning Toast */}
+      {isWarningVisible && (
+        <div
+          role="alertdialog"
+          aria-live="assertive"
+          aria-labelledby="inactivity-countdown-title"
+          className="fixed bottom-20 lg:bottom-6 left-4 right-4 sm:right-auto sm:left-6 z-50 sm:w-[400px] p-4 bg-slate-950/95 backdrop-blur-md text-slate-100 rounded-2xl shadow-2xl border border-amber-500/60 space-y-3 animate-in fade-in slide-in-from-bottom-3"
+        >
+          <div className="flex items-start gap-3">
+            {/* Circular Visual SVG Countdown Ring */}
+            <div className="relative w-12 h-12 shrink-0 flex items-center justify-center">
+              <svg className="w-12 h-12 -rotate-90" viewBox="0 0 44 44" aria-hidden="true">
+                <circle
+                  cx="22"
+                  cy="22"
+                  r="18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3.5"
+                  className="text-slate-800"
+                />
+                <circle
+                  cx="22"
+                  cy="22"
+                  r="18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  strokeDasharray={2 * Math.PI * 18}
+                  strokeDashoffset={
+                    2 * Math.PI * 18 * (1 - Math.max(0, Math.min(1, secondsRemaining / warningTotalSeconds)))
+                  }
+                  className={`transition-all duration-500 ${
+                    secondsRemaining <= 15 ? 'text-red-500' : 'text-amber-400'
+                  }`}
+                />
+              </svg>
+              <span
+                className={`absolute font-mono text-xs font-extrabold ${
+                  secondsRemaining <= 15 ? 'text-red-400 animate-pulse' : 'text-amber-300'
+                }`}
+              >
+                {secondsRemaining}s
+              </span>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <Clock
+                  className={`w-3.5 h-3.5 shrink-0 ${
+                    secondsRemaining <= 15 ? 'text-red-400' : 'text-amber-400'
+                  }`}
+                />
+                <span id="inactivity-countdown-title" className="text-xs font-bold text-white">
+                  Session Expiring Soon
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                You will be automatically signed out in{' '}
+                <strong
+                  className={`font-mono ${
+                    secondsRemaining <= 15 ? 'text-red-400' : 'text-amber-300'
+                  }`}
+                >
+                  {secondsRemaining} second{secondsRemaining === 1 ? '' : 's'}
+                </strong>{' '}
+                due to inactivity.
+              </p>
+            </div>
+          </div>
+
+          {/* Linear Progress Bar */}
+          <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                secondsRemaining <= 15
+                  ? 'bg-gradient-to-r from-red-600 to-rose-400'
+                  : 'bg-gradient-to-r from-amber-500 to-yellow-400'
+              }`}
+              style={{
+                width: `${Math.max(0, Math.min(100, (secondsRemaining / warningTotalSeconds) * 100))}%`
+              }}
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={stayLoggedIn}
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md transition-all"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Stay Logged In</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Inactivity Logout Notice Toast */}
       {inactivityNotice && (
-        <div className="fixed bottom-6 left-6 z-50 max-w-md p-4 bg-amber-950 text-amber-200 rounded-2xl shadow-2xl border border-amber-700 flex items-start gap-3 animate-in fade-in slide-in-from-bottom-3">
+        <div className="fixed bottom-20 lg:bottom-6 left-4 right-4 sm:right-auto sm:left-6 z-50 max-w-md p-4 bg-amber-950 text-amber-200 rounded-2xl shadow-2xl border border-amber-700 flex items-start gap-3 animate-in fade-in slide-in-from-bottom-3">
           <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           <div className="flex-1 text-xs leading-relaxed">
             <span className="font-bold block text-white mb-0.5">Session Timed Out</span>
@@ -275,6 +389,7 @@ function AppContent() {
           <button
             type="button"
             onClick={dismissNotice}
+            aria-label="Dismiss session timeout notice"
             className="p-1 rounded text-amber-400 hover:text-white"
           >
             <X className="w-4 h-4" />

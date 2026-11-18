@@ -13,8 +13,10 @@ import {
   Cpu, 
   FileText, 
   ShieldCheck, 
-  ArrowRight,
-  MessageSquare
+  ArrowRight, 
+  MessageSquare,
+  Lock,
+  Tag
 } from 'lucide-react';
 import { useSite } from '../../context/SiteContext.tsx';
 import { ServiceItem } from '../../types/index.ts';
@@ -28,7 +30,9 @@ export const ServiceRequestModal: React.FC = () => {
     clientUser, 
     submitServiceRequest, 
     formatPrice,
-    openChatWithContext
+    openChatWithContext,
+    config,
+    openNegotiationModal
   } = useSite();
 
   const [selectedServiceId, setSelectedServiceId] = useState<string>('');
@@ -290,17 +294,52 @@ export const ServiceRequestModal: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                    <span>Target Budget (GH₵)</span>
-                    <span className="font-mono text-blue-600 dark:text-blue-400 font-bold">{formatPrice(budget)}</span>
+                    <span className="flex items-center gap-1">
+                      <Lock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Enterprise Service Price</span>
+                    </span>
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">Fixed Standard MSRP</span>
                   </label>
-                  <input
-                    type="number"
-                    min={10000}
-                    step={5000}
-                    value={budget}
-                    onChange={(e) => setBudget(Number(e.target.value))}
-                    className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
-                  />
+
+                  {/* Restricted Locked Price Display (Clients cannot edit) */}
+                  <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <Coins className="w-4 h-4 text-blue-500" />
+                      <span className="font-mono text-sm font-extrabold text-slate-900 dark:text-white">
+                        {formatPrice(budget)}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-semibold px-2 py-0.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600">
+                      Policy Locked
+                    </span>
+                  </div>
+
+                  {/* Admin Negotiations Enablement Check */}
+                  {config.enableServiceNegotiations !== false ? (
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsServiceRequestModalOpen(false);
+                          openNegotiationModal({
+                            id: activeService?.id || 'service',
+                            title: activeService?.title || 'Custom Engineering Service',
+                            price: activeService?.startingPrice || 45000,
+                            type: 'software'
+                          });
+                        }}
+                        className="w-full py-1.5 px-2.5 rounded-lg text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-300 dark:border-amber-800 transition-colors flex items-center justify-center gap-1.5 shadow-2xs"
+                      >
+                        <Tag className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                        <span>Admin Enabled: Propose Price Counter-Offer</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="pt-1 text-[11px] text-slate-400 italic flex items-center gap-1">
+                      <Lock className="w-3 h-3 text-slate-400" />
+                      <span>Price negotiations currently locked by leadership.</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">

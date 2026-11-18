@@ -14,7 +14,9 @@ import {
   Clock,
   ShieldAlert,
   Activity,
-  Search
+  Search,
+  Bell,
+  Fingerprint
 } from 'lucide-react';
 import { useSite } from '../context/SiteContext.tsx';
 import { PageId } from '../types/index.ts';
@@ -45,7 +47,11 @@ export const Navbar: React.FC<NavbarProps> = ({
     logoutClient, 
     setIsAuthModalOpen, 
     setAuthModalTab,
-    setIsTrackerModalOpen
+    setIsTrackerModalOpen,
+    setIsClientNotificationModalOpen,
+    negotiations,
+    serviceRequests,
+    clientServiceIds
   } = useSite();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -153,6 +159,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                   ) : null}
                 </div>
 
+                {/* Biometric Passkey Manager Option */}
+                <button
+                  onClick={() => {
+                    setAuthModalTab('security');
+                    setIsAuthModalOpen(true);
+                  }}
+                  title="Manage Biometric Passkeys (WebAuthn FIDO2)"
+                  aria-label="Manage Biometric Passkeys"
+                  className="p-1.5 text-blue-600 dark:text-cyan-400 hover:bg-blue-50 dark:hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                >
+                  <Fingerprint className="w-3.5 h-3.5" />
+                  <span className="hidden xl:inline">Passkeys</span>
+                </button>
+
                 {/* Explicit Log Out Option */}
                 <button
                   onClick={logoutClient}
@@ -201,6 +221,30 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden xl:inline">Search...</span>
               <kbd className="hidden xl:inline font-mono text-[9px] text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-800">⌘K</kbd>
             </button>
+
+            {/* Client Service Pricing Notification Bell */}
+            {(() => {
+              const upperIds = new Set(clientServiceIds.map(id => id.toUpperCase()));
+              const myAlertCount =
+                (negotiations || []).filter(n => upperIds.has(n.id.toUpperCase()) && n.status !== 'pending').length +
+                (serviceRequests || []).filter(r => upperIds.has(r.id.toUpperCase()) && r.status !== 'pending').length;
+              return (
+                <button
+                  type="button"
+                  onClick={() => setIsClientNotificationModalOpen(true)}
+                  aria-label="Client Service Notifications Desk"
+                  title="Enter Service ID to View Private Price Approvals, Rejections & Counter-Offers"
+                  className="relative p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                >
+                  <Bell className="w-5 h-5 sm:w-4 sm:h-4 text-blue-600 dark:text-blue-400" />
+                  {myAlertCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 bg-amber-500 text-white text-[9px] font-extrabold w-4 h-4 rounded-full flex items-center justify-center font-mono animate-pulse shadow-sm">
+                      {myAlertCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
 
             {/* Hardware Quote Drawer Trigger */}
             <button
@@ -303,16 +347,29 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </span>
                   )}
                 </div>
-                <button
-                  onClick={() => {
-                    logoutClient();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="px-2.5 py-1 text-xs font-semibold text-red-600 bg-red-50 dark:bg-red-950/40 rounded border border-red-200 dark:border-red-900 flex items-center gap-1"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Log Out</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      setAuthModalTab('security');
+                      setIsAuthModalOpen(true);
+                    }}
+                    className="px-2.5 py-1 text-xs font-semibold text-blue-600 dark:text-cyan-400 bg-blue-50 dark:bg-blue-950/40 rounded border border-blue-200 dark:border-blue-800 flex items-center gap-1"
+                  >
+                    <Fingerprint className="w-3.5 h-3.5" />
+                    <span>Passkeys</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      logoutClient();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="px-2.5 py-1 text-xs font-semibold text-red-600 bg-red-50 dark:bg-red-950/40 rounded border border-red-200 dark:border-red-900 flex items-center gap-1"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Log Out</span>
+                  </button>
+                </div>
               </div>
             )}
 

@@ -27,10 +27,11 @@
       "instagram": "https://instagram.com/deroyaltech",
       "linkedin": "https://linkedin.com/company/deroyaltech"
     },
-    "enableVideoPreviews": true
+    "enableVideoPreviews": true,
+    "enableServiceNegotiations": true,
+    "autoBackupIntervalDays": 7,
+    "metrics": {}
   },
-  "hardware": [],
-  "projects": [],
   "inquiries": [
     {
       "id": "DRT-INQ-9481",
@@ -46,5 +47,52 @@
       "status": "New"
     }
   ],
-  "_lastModified": "2026-11-10T08:46:16.458Z"
+  "_revision": 9,
+  "_lastModified": "2026-11-16T12:56:12.152Z",
+  "users": [
+    {
+      "id": "user-admin-master",
+      "fullName": "DeRoyalTech Engineering Lead",
+      "email": "admin@deroyaltech.com",
+      "company": "DeRoyalTech Systems Limited",
+      "phone": "+233 (0) 30 294 8821",
+      "role": "Principal Systems Administrator",
+      "password": "admin",
+      "registeredAt": "2026-01-01T00:00:00Z",
+      "status": "approved",
+      "isVerified": true,
+      "isAdmin": true,
+      "approvedAt": "2026-01-01T00:00:00Z",
+      "approvedBy": "System"
+    },
+    {
+      "id": "user-partner-asante",
+      "fullName": "Kwame Asante",
+      "email": "k.asante@ghana-enterprises.com",
+      "company": "Asante Logistics & Technology Ltd",
+      "phone": "+233 24 590 1284",
+      "role": "Chief Technology Officer",
+      "password": "password123",
+      "registeredAt": "2026-10-15T11:20:00Z",
+      "status": "approved",
+      "isVerified": true,
+      "isAdmin": false,
+      "approvedAt": "2026-10-16T09:00:00Z",
+      "approvedBy": "DeRoyalTech Admin",
+      "webAuthnCredentials": []
+    },
+    {
+      "id": "user-pending-mensah",
+      "fullName": "Ama Mensah",
+      "email": "ama.mensah@accra-retail.com",
+      "company": "Accra Retail Ventures",
+      "phone": "+233 20 445 1928",
+      "role": "Procurement Director",
+      "password": "password123",
+      "registeredAt": "2026-11-01T14:45:00Z",
+      "status": "pending",
+      "isVerified": false,
+      "isAdmin": false
+    }
+  ]
 }

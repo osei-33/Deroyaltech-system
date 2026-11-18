@@ -22,7 +22,8 @@ import {
   Mail,
   Phone,
   Layers,
-  RefreshCw
+  RefreshCw,
+  Lock
 } from 'lucide-react';
 import { useSite } from '../../../context/SiteContext.tsx';
 import { PriceNegotiation, NegotiationStatus } from '../../../types/index.ts';
@@ -34,7 +35,8 @@ export const AdminNegotiationsTab: React.FC = () => {
     respondToNegotiation, 
     updateGlobalPriceAdjustment,
     getAdjustedPrice,
-    formatPrice 
+    formatPrice,
+    toggleServiceNegotiations
   } = useSite();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'pending' | 'approved' | 'countered' | 'rejected'>('all');
@@ -122,6 +124,61 @@ export const AdminNegotiationsTab: React.FC = () => {
             Add or remove bulk percentage margins on all software and hardware products, and review, counter, or approve client price proposals.
           </p>
         </div>
+      </div>
+
+      {/* MASTER TOGGLE: ENABLE / DISABLE CLIENT SERVICE PRICE NEGOTIATIONS */}
+      <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-blue-500/10 to-indigo-500/10 border border-amber-500/30 dark:border-amber-500/20 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md">
+            <Lock className="w-5 h-5" />
+          </div>
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                Client Service Price Counter-Offers & Negotiations
+              </h4>
+              <span className={`px-2 py-0.5 text-[10px] font-extrabold uppercase rounded-full ${
+                config.enableServiceNegotiations !== false
+                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                  : 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
+              }`}>
+                {config.enableServiceNegotiations !== false ? 'Enabled for Clients' : 'Locked by Leadership'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              {config.enableServiceNegotiations !== false
+                ? 'Clients are prohibited from arbitrary price editing, but CAN submit formal counter-offers for admin approval.'
+                : 'Price negotiations and counter-offers are strictly locked across all services. Fixed list MSRP applies.'}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={async () => {
+            const nextVal = config.enableServiceNegotiations === false ? true : false;
+            await toggleServiceNegotiations(nextVal);
+            setToastMessage(`Client price negotiations ${nextVal ? 'ENABLED' : 'LOCKED'}!`);
+            setTimeout(() => setToastMessage(null), 3500);
+          }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm shrink-0 active:scale-95 ${
+            config.enableServiceNegotiations !== false
+              ? 'bg-amber-600 hover:bg-amber-700 text-white'
+              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+          }`}
+        >
+          {config.enableServiceNegotiations !== false ? (
+            <>
+              <Lock className="w-4 h-4" />
+              <span>Lock / Restrict Negotiations</span>
+            </>
+          ) : (
+            <>
+              <Tag className="w-4 h-4" />
+              <span>Enable Client Counter-Offers</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* SECTION 1: GLOBAL PERCENTAGE CONTROLLER */}

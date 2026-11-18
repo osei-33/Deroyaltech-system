@@ -3,7 +3,15 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
+process.env.DISABLE_HMR = "true";
+process.on("SIGTERM", () => {
+  process.exit(0);
+});
+process.on("SIGINT", () => {
+  process.exit(0);
+});
 var __filename = fileURLToPath(import.meta.url);
 var __dirname = path.dirname(__filename);
 var PORT = 3e3;
@@ -29,6 +37,8 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 var getInitialData = () => {
   return {
+    _revision: 1,
+    _lastModified: (/* @__PURE__ */ new Date()).toISOString(),
     config: {
       logoUrl: "/assets/aistudio/Deroyaltech_Digital_Innovation_Logo_9f10ddb1.png",
       currencySymbol: "GH\u20B5",
@@ -57,10 +67,10 @@ var getInitialData = () => {
         instagram: "https://instagram.com/deroyaltech",
         linkedin: "https://linkedin.com/company/deroyaltech"
       },
-      enableVideoPreviews: true
+      enableVideoPreviews: true,
+      enableServiceNegotiations: true,
+      autoBackupIntervalDays: 7
     },
-    hardware: [],
-    projects: [],
     inquiries: [
       {
         id: "DRT-INQ-9481",
@@ -78,22 +88,60 @@ var getInitialData = () => {
     ]
   };
 };
+var sseClients = /* @__PURE__ */ new Set();
+var broadcastDataUpdate = (data) => {
+  const payload = JSON.stringify({
+    type: "site-data-updated",
+    revision: data._revision || 0,
+    lastModified: data._lastModified || (/* @__PURE__ */ new Date()).toISOString()
+  });
+  for (const client of sseClients) {
+    try {
+      client.write(`data: ${payload}
+
+`);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+};
 var loadData = () => {
   try {
     if (fs.existsSync(DATA_FILE)) {
       const content = fs.readFileSync(DATA_FILE, "utf-8");
-      return JSON.parse(content);
+      const parsed = JSON.parse(content);
+      if (!parsed._revision) {
+        if (Array.isArray(parsed.hardware) && parsed.hardware.length === 0) {
+          delete parsed.hardware;
+        }
+        if (Array.isArray(parsed.projects) && parsed.projects.length === 0) {
+          delete parsed.projects;
+        }
+      }
+      return parsed;
     }
   } catch (err) {
     console.error("Error reading site data file:", err);
   }
   const init = getInitialData();
-  saveData(init);
+  saveData(init, false);
   return init;
 };
-var saveData = (data) => {
+var saveData = (data, shouldBroadcast = true) => {
   try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
+    data._revision = (Number(data._revision) || 0) + 1;
+    data._lastModified = (/* @__PURE__ */ new Date()).toISOString();
+    const serialized = JSON.stringify(data, null, 2);
+    const tmpFile = `${DATA_FILE}.tmp`;
+    try {
+      fs.writeFileSync(tmpFile, serialized, "utf-8");
+      fs.renameSync(tmpFile, DATA_FILE);
+    } catch {
+      fs.writeFileSync(DATA_FILE, serialized, "utf-8");
+    }
+    if (shouldBroadcast) {
+      broadcastDataUpdate(data);
+    }
   } catch (err) {
     console.error("Error saving site data file:", err);
   }
@@ -101,6 +149,40 @@ var saveData = (data) => {
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: "50mb" }));
+  app.use("/api", (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    next();
+  });
+  app.get("/api/events", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders?.();
+    const current = loadData();
+    res.write(`data: ${JSON.stringify({
+      type: "connected",
+      revision: current._revision || 0,
+      lastModified: current._lastModified || (/* @__PURE__ */ new Date()).toISOString()
+    })}
+
+`);
+    sseClients.add(res);
+    const keepAlive = setInterval(() => {
+      try {
+        res.write(": keepalive\n\n");
+      } catch {
+        clearInterval(keepAlive);
+        sseClients.delete(res);
+      }
+    }, 25e3);
+    req.on("close", () => {
+      clearInterval(keepAlive);
+      sseClients.delete(res);
+    });
+  });
   app.get("/api/site-data", (_req, res) => {
     const data = loadData();
     res.json(data);
@@ -112,24 +194,24 @@ async function startServer() {
       ...current.config.contact || {},
       ...req.body
     };
-    current._lastModified = (/* @__PURE__ */ new Date()).toISOString();
     saveData(current);
-    res.json({ success: true, contact: current.config.contact });
+    res.json({ success: true, contact: current.config.contact, revision: current._revision });
   });
   app.post("/api/site-data", (req, res) => {
     const current = loadData();
+    const incomingConfig = req.body.config;
     const updated = {
       ...current,
       ...req.body,
-      config: req.body.config ? {
-        ...current.config,
-        ...req.body.config,
-        contact: { ...current.config?.contact || {}, ...req.body.config.contact || {} },
-        social: { ...current.config?.social || {}, ...req.body.config.social || {} },
-        metrics: { ...current.config?.metrics || {}, ...req.body.config.metrics || {} },
-        announcement: req.body.config.announcement !== void 0 ? req.body.config.announcement : current.config?.announcement,
-        letterhead: req.body.config.letterhead !== void 0 ? req.body.config.letterhead : current.config?.letterhead,
-        adminProfile: req.body.config.adminProfile !== void 0 ? req.body.config.adminProfile : current.config?.adminProfile
+      config: incomingConfig ? {
+        ...current.config || {},
+        ...incomingConfig,
+        contact: { ...current.config?.contact || {}, ...incomingConfig.contact || {} },
+        social: { ...current.config?.social || {}, ...incomingConfig.social || {} },
+        metrics: { ...current.config?.metrics || {}, ...incomingConfig.metrics || {} },
+        announcement: incomingConfig.announcement !== void 0 ? incomingConfig.announcement : current.config?.announcement,
+        letterhead: incomingConfig.letterhead !== void 0 ? incomingConfig.letterhead : current.config?.letterhead,
+        adminProfile: incomingConfig.adminProfile !== void 0 ? incomingConfig.adminProfile : current.config?.adminProfile
       } : current.config,
       services: req.body.services !== void 0 ? req.body.services : current.services,
       hardware: req.body.hardware !== void 0 ? req.body.hardware : current.hardware,
@@ -145,10 +227,12 @@ async function startServer() {
       serviceRequests: req.body.serviceRequests !== void 0 ? req.body.serviceRequests : current.serviceRequests,
       trackedProjects: req.body.trackedProjects !== void 0 ? req.body.trackedProjects : current.trackedProjects,
       emailAlerts: req.body.emailAlerts !== void 0 ? req.body.emailAlerts : current.emailAlerts,
-      _lastModified: (/* @__PURE__ */ new Date()).toISOString()
+      negotiations: req.body.negotiations !== void 0 ? req.body.negotiations : current.negotiations,
+      projectBackups: req.body.projectBackups !== void 0 ? req.body.projectBackups : current.projectBackups,
+      autoEmailEnabled: req.body.autoEmailEnabled !== void 0 ? req.body.autoEmailEnabled : current.autoEmailEnabled
     };
     saveData(updated);
-    res.json({ success: true, data: updated });
+    res.json({ success: true, data: updated, revision: updated._revision, lastModified: updated._lastModified });
   });
   app.get("/api/inquiries", (_req, res) => {
     const data = loadData();
@@ -365,6 +449,109 @@ ${urls.map((u) => `  <url>
     }
     saveData(data);
     res.json({ success: true, config: data.config });
+  });
+  app.get("/api/projects/:id/backups", (req, res) => {
+    const data = loadData();
+    const { id } = req.params;
+    const backups = (data.projectBackups || []).filter((b) => b.projectId.toUpperCase() === id.toUpperCase());
+    res.json(backups);
+  });
+  app.post("/api/projects/:id/backup", (req, res) => {
+    const data = loadData();
+    const { id } = req.params;
+    const project = (data.trackedProjects || []).find((p) => p.projectId.toUpperCase() === id.toUpperCase()) || req.body.snapshotData?.project;
+    const now = /* @__PURE__ */ new Date();
+    const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1e3);
+    const snapId = req.body.id || `SNAP-${id}-${now.getFullYear()}-W${Math.ceil(now.getDate() / 7)}-${Math.floor(100 + Math.random() * 900)}`;
+    const resolvedEmail = (req.body.clientEmail || project?.clientEmail || "").trim().toLowerCase();
+    const newBackup = {
+      id: snapId,
+      projectId: id,
+      projectTitle: req.body.projectTitle || project?.title || "System Development Project",
+      clientEmail: req.body.clientEmail || project?.clientEmail || "",
+      createdAt: req.body.createdAt || now.toISOString(),
+      type: req.body.type || "automated_weekly",
+      stage: req.body.stage || project?.stage || "development",
+      stageLabel: req.body.stageLabel || project?.stageLabel || "Active Engineering Phase",
+      progressPercent: req.body.progressPercent ?? project?.progressPercent ?? 0,
+      completedMilestonesCount: req.body.completedMilestonesCount ?? (project?.milestones?.filter((m) => m.status === "completed").length || 0),
+      totalMilestonesCount: req.body.totalMilestonesCount ?? (project?.milestones?.length || 0),
+      snapshotData: req.body.snapshotData || {
+        project: project || {},
+        systemTimestamp: now.toISOString(),
+        checksum: `SHA256-${Buffer.from(`${id}-${now.getTime()}`).toString("hex").slice(0, 16).toUpperCase()}`
+      },
+      fileSizeBytes: req.body.fileSizeBytes || JSON.stringify(project || {}).length + 1024,
+      note: req.body.note || "Automated weekly progress snapshot archived in client account cloud storage",
+      syncedToCloud: true
+    };
+    const existingBackups = Array.isArray(data.projectBackups) ? data.projectBackups : [];
+    data.projectBackups = [newBackup, ...existingBackups.filter((b) => b.id !== newBackup.id)];
+    if (Array.isArray(data.trackedProjects)) {
+      data.trackedProjects = data.trackedProjects.map((p) => {
+        if (p.projectId.toUpperCase() === id.toUpperCase()) {
+          return {
+            ...p,
+            lastBackupDate: newBackup.createdAt,
+            nextScheduledBackupDate: nextWeek.toISOString(),
+            autoBackupEnabled: p.autoBackupEnabled !== false,
+            backupsCount: data.projectBackups.filter((b) => b.projectId.toUpperCase() === id.toUpperCase()).length
+          };
+        }
+        return p;
+      });
+    }
+    if (Array.isArray(data.users) && resolvedEmail) {
+      data.users = data.users.map((u) => {
+        if ((u.email || "").trim().toLowerCase() === resolvedEmail) {
+          const prevAccountBackups = Array.isArray(u.cloudBackups) ? u.cloudBackups : [];
+          return {
+            ...u,
+            cloudBackups: [newBackup, ...prevAccountBackups.filter((b) => b.id !== newBackup.id)]
+          };
+        }
+        return u;
+      });
+    }
+    saveData(data);
+    res.json({ success: true, backup: newBackup, revision: data._revision });
+  });
+  app.patch("/api/projects/:id/backup-schedule", (req, res) => {
+    const data = loadData();
+    const { id } = req.params;
+    const { autoBackupEnabled } = req.body;
+    if (Array.isArray(data.trackedProjects)) {
+      data.trackedProjects = data.trackedProjects.map(
+        (p) => p.projectId.toUpperCase() === id.toUpperCase() ? { ...p, autoBackupEnabled: Boolean(autoBackupEnabled) } : p
+      );
+      saveData(data);
+    }
+    res.json({ success: true, revision: data._revision });
+  });
+  app.delete("/api/projects/backups/:backupId", (req, res) => {
+    const data = loadData();
+    const { backupId } = req.params;
+    const target = (data.projectBackups || []).find((b) => b.id === backupId);
+    data.projectBackups = (data.projectBackups || []).filter((b) => b.id !== backupId);
+    if (Array.isArray(data.users)) {
+      data.users = data.users.map((u) => ({
+        ...u,
+        cloudBackups: Array.isArray(u.cloudBackups) ? u.cloudBackups.filter((b) => b.id !== backupId) : u.cloudBackups
+      }));
+    }
+    if (target && Array.isArray(data.trackedProjects)) {
+      data.trackedProjects = data.trackedProjects.map((p) => {
+        if (p.projectId.toUpperCase() === (target.projectId || "").toUpperCase()) {
+          return {
+            ...p,
+            backupsCount: data.projectBackups.filter((b) => b.projectId.toUpperCase() === p.projectId.toUpperCase()).length
+          };
+        }
+        return p;
+      });
+    }
+    saveData(data);
+    res.json({ success: true, revision: data._revision });
   });
   app.get("/robots.txt", (_req, res) => {
     const robotsFile = path.resolve(__dirname, "public", "robots.txt");
@@ -652,29 +839,581 @@ We welcome the opportunity to review this scope in detail with your executive le
       res.status(500).json({ success: false, error: error.message });
     }
   });
+  const DEFAULT_SEED_USERS = [
+    {
+      id: "user-admin-master",
+      fullName: "DeRoyalTech Engineering Lead",
+      email: "admin@deroyaltech.com",
+      company: "DeRoyalTech Systems Limited",
+      phone: "+233 (0) 30 294 8821",
+      role: "Principal Systems Administrator",
+      password: "admin",
+      registeredAt: "2026-01-01T00:00:00Z",
+      status: "approved",
+      isVerified: true,
+      isAdmin: true,
+      approvedAt: "2026-01-01T00:00:00Z",
+      approvedBy: "System"
+    },
+    {
+      id: "user-partner-asante",
+      fullName: "Kwame Asante",
+      email: "k.asante@ghana-enterprises.com",
+      company: "Asante Logistics & Technology Ltd",
+      phone: "+233 24 590 1284",
+      role: "Chief Technology Officer",
+      password: "password123",
+      registeredAt: "2026-10-15T11:20:00Z",
+      status: "approved",
+      isVerified: true,
+      isAdmin: false,
+      approvedAt: "2026-10-16T09:00:00Z",
+      approvedBy: "DeRoyalTech Admin"
+    },
+    {
+      id: "user-pending-mensah",
+      fullName: "Ama Mensah",
+      email: "ama.mensah@accra-retail.com",
+      company: "Accra Retail Ventures",
+      phone: "+233 20 445 1928",
+      role: "Procurement Director",
+      password: "password123",
+      registeredAt: "2026-11-01T14:45:00Z",
+      status: "pending",
+      isVerified: false,
+      isAdmin: false
+    }
+  ];
+  const ensureSeedUsers = (data) => {
+    if (!Array.isArray(data.users) || data.users.length === 0) {
+      data.users = JSON.parse(JSON.stringify(DEFAULT_SEED_USERS));
+      return true;
+    }
+    return false;
+  };
+  const toBase64Url = (buf) => buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  const fromBase64Url = (str) => {
+    const padded = str.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((str.length + 3) % 4);
+    return Buffer.from(padded, "base64");
+  };
+  const decodeCbor = (buf, state = { offset: 0 }) => {
+    if (state.offset >= buf.length) throw new Error("Unexpected end of CBOR buffer");
+    const initialByte = buf[state.offset++];
+    const majorType = initialByte >> 5;
+    const additionalInfo = initialByte & 31;
+    const readLength = () => {
+      if (additionalInfo < 24) return additionalInfo;
+      if (additionalInfo === 24) return buf[state.offset++];
+      if (additionalInfo === 25) {
+        const v = buf.readUInt16BE(state.offset);
+        state.offset += 2;
+        return v;
+      }
+      if (additionalInfo === 26) {
+        const v = buf.readUInt32BE(state.offset);
+        state.offset += 4;
+        return v;
+      }
+      throw new Error(`Unsupported CBOR length info: ${additionalInfo}`);
+    };
+    if (majorType === 0) return readLength();
+    if (majorType === 1) return -1 - readLength();
+    if (majorType === 2) {
+      const len = readLength();
+      const slice = buf.subarray(state.offset, state.offset + len);
+      state.offset += len;
+      return slice;
+    }
+    if (majorType === 3) {
+      const len = readLength();
+      const slice = buf.subarray(state.offset, state.offset + len).toString("utf8");
+      state.offset += len;
+      return slice;
+    }
+    if (majorType === 4) {
+      const len = readLength();
+      const arr = [];
+      for (let i = 0; i < len; i++) arr.push(decodeCbor(buf, state));
+      return arr;
+    }
+    if (majorType === 5) {
+      const len = readLength();
+      const map = {};
+      for (let i = 0; i < len; i++) {
+        const k = decodeCbor(buf, state);
+        const v = decodeCbor(buf, state);
+        map[String(k)] = v;
+      }
+      return map;
+    }
+    if (majorType === 7) {
+      if (additionalInfo === 20) return false;
+      if (additionalInfo === 21) return true;
+      if (additionalInfo === 22) return null;
+      return void 0;
+    }
+    throw new Error(`Unsupported CBOR major type: ${majorType}`);
+  };
+  const coseToSpki = (coseKey) => {
+    const kty = Number(coseKey["1"]);
+    const alg = Number(coseKey["3"] || -7);
+    if (kty === 2 && Number(coseKey["-1"]) === 1) {
+      const x = Buffer.from(coseKey["-2"]);
+      const y = Buffer.from(coseKey["-3"]);
+      const keyObj = crypto.createPublicKey({
+        key: { kty: "EC", crv: "P-256", x: toBase64Url(x), y: toBase64Url(y) },
+        format: "jwk"
+      });
+      const spki = keyObj.export({ type: "spki", format: "der" });
+      return { spkiBase64Url: toBase64Url(spki), alg };
+    }
+    if (kty === 3) {
+      const n = Buffer.from(coseKey["-1"]);
+      const e = Buffer.from(coseKey["-2"]);
+      const keyObj = crypto.createPublicKey({
+        key: { kty: "RSA", n: toBase64Url(n), e: toBase64Url(e) },
+        format: "jwk"
+      });
+      const spki = keyObj.export({ type: "spki", format: "der" });
+      return { spkiBase64Url: toBase64Url(spki), alg };
+    }
+    throw new Error(`Unsupported COSE key type: ${kty}`);
+  };
+  const extractSpkiFromAttestation = (attestationObjectB64Url, fallbackSpkiB64Url, fallbackAlg) => {
+    if (attestationObjectB64Url) {
+      try {
+        const attBuf = fromBase64Url(attestationObjectB64Url);
+        const attObj = decodeCbor(attBuf);
+        const authData = Buffer.from(attObj.authData);
+        const flags = authData[32];
+        const counter = authData.readUInt32BE(33);
+        const hasAttestedCred = (flags & 64) !== 0;
+        if (hasAttestedCred && authData.length > 55) {
+          const credIdLen = authData.readUInt16BE(53);
+          const credId = toBase64Url(authData.subarray(55, 55 + credIdLen));
+          const coseSlice = authData.subarray(55 + credIdLen);
+          const coseKey = decodeCbor(coseSlice);
+          const { spkiBase64Url, alg } = coseToSpki(coseKey);
+          return { spkiBase64Url, alg, counter, credentialId: credId };
+        }
+      } catch (err) {
+        if (!fallbackSpkiB64Url) {
+          throw err;
+        }
+      }
+    }
+    if (fallbackSpkiB64Url) {
+      const spkiBuf = fromBase64Url(fallbackSpkiB64Url);
+      crypto.createPublicKey({ key: spkiBuf, format: "der", type: "spki" });
+      return {
+        spkiBase64Url: fallbackSpkiB64Url,
+        alg: Number(fallbackAlg || -7),
+        counter: 0
+      };
+    }
+    throw new Error("Could not extract valid SPKI public key from WebAuthn credential");
+  };
+  const webAuthnChallenges = /* @__PURE__ */ new Map();
+  const cleanupExpiredChallenges = () => {
+    const now = Date.now();
+    for (const [key, entry] of webAuthnChallenges.entries()) {
+      if (entry.expiresAt < now) {
+        webAuthnChallenges.delete(key);
+      }
+    }
+  };
+  app.post("/api/webauthn/register/options", (req, res) => {
+    try {
+      cleanupExpiredChallenges();
+      const data = loadData();
+      if (ensureSeedUsers(data)) {
+        saveData(data, false);
+      }
+      const rawEmail = String(req.body?.email || "").trim().toLowerCase();
+      const rpId = String(req.body?.rpId || req.hostname || "localhost").split(":")[0];
+      const password = req.body?.password ? String(req.body.password) : void 0;
+      const allowNewAccountRegistration = Boolean(req.body?.allowNewAccountRegistration);
+      const authenticatorAttachment = req.body?.authenticatorAttachment === "cross-platform" ? "cross-platform" : "platform";
+      if (!rawEmail) {
+        return res.status(400).json({ success: false, message: "Corporate email address is required to enroll biometrics." });
+      }
+      const existingUser = (data.users || []).find((u) => (u.email || "").toLowerCase() === rawEmail);
+      if (!existingUser && !allowNewAccountRegistration) {
+        return res.status(404).json({
+          success: false,
+          message: "No registered client account found with this email. Register first or switch to New Client Registration."
+        });
+      }
+      if (existingUser && !allowNewAccountRegistration && !req.body?.isLoggedInSession) {
+        if (existingUser.password && existingUser.password !== password) {
+          return res.status(401).json({
+            success: false,
+            message: "Enter your current account password to authorize enrolling a biometric passkey."
+          });
+        }
+      }
+      const challenge = toBase64Url(crypto.randomBytes(32));
+      const challengeId = `wa-reg-${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
+      webAuthnChallenges.set(challengeId, {
+        challenge,
+        type: "register",
+        email: rawEmail,
+        rpId,
+        expiresAt: Date.now() + 5 * 60 * 1e3
+      });
+      const userIdStr = existingUser?.id || `pending-${rawEmail}`;
+      const displayName = existingUser?.fullName || String(req.body?.fullName || rawEmail);
+      const excludeCredentials = (existingUser?.webAuthnCredentials || []).map((c) => ({
+        id: c.id,
+        type: "public-key",
+        transports: c.transports || ["internal"]
+      }));
+      res.json({
+        success: true,
+        challengeId,
+        options: {
+          challenge,
+          rp: {
+            name: "DeRoyalTech Systems Enterprise Portal",
+            id: rpId
+          },
+          user: {
+            id: toBase64Url(Buffer.from(userIdStr, "utf8")),
+            name: rawEmail,
+            displayName
+          },
+          pubKeyCredParams: [
+            { type: "public-key", alg: -7 },
+            { type: "public-key", alg: -257 }
+          ],
+          timeout: 6e4,
+          attestation: "none",
+          excludeCredentials,
+          authenticatorSelection: {
+            authenticatorAttachment,
+            residentKey: "preferred",
+            requireResidentKey: false,
+            userVerification: "required"
+          }
+        }
+      });
+    } catch (error) {
+      console.error("WebAuthn register/options error:", error);
+      res.status(500).json({ success: false, message: error.message || "Failed to generate WebAuthn registration options." });
+    }
+  });
+  app.post("/api/webauthn/register/verify", (req, res) => {
+    try {
+      cleanupExpiredChallenges();
+      const { challengeId, email, credential, deviceName, authenticatorType } = req.body || {};
+      const pending = webAuthnChallenges.get(String(challengeId || ""));
+      if (!pending || pending.type !== "register") {
+        return res.status(400).json({ success: false, message: "Biometric registration session expired or invalid. Please retry." });
+      }
+      webAuthnChallenges.delete(String(challengeId));
+      if (!credential?.id || !credential?.response?.clientDataJSON) {
+        return res.status(400).json({ success: false, message: "Malformed WebAuthn credential payload." });
+      }
+      const clientDataBuf = fromBase64Url(credential.response.clientDataJSON);
+      const clientData = JSON.parse(clientDataBuf.toString("utf8"));
+      if (clientData.type !== "webauthn.create") {
+        return res.status(400).json({ success: false, message: "Invalid WebAuthn ceremony type." });
+      }
+      if (clientData.challenge !== pending.challenge) {
+        return res.status(400).json({ success: false, message: "WebAuthn challenge mismatch." });
+      }
+      const extracted = extractSpkiFromAttestation(
+        credential.response.attestationObject,
+        credential.response.publicKeySpki,
+        credential.response.publicKeyAlgorithm
+      );
+      const newCredRecord = {
+        id: String(credential.id),
+        rawId: String(credential.rawId || credential.id),
+        publicKeySpki: extracted.spkiBase64Url,
+        algorithm: extracted.alg,
+        counter: extracted.counter || 0,
+        deviceName: String(deviceName || "Biometric Passkey Device").slice(0, 80),
+        transports: Array.isArray(credential.response.transports) ? credential.response.transports : ["internal"],
+        authenticatorType: authenticatorType || "platform",
+        createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      const data = loadData();
+      ensureSeedUsers(data);
+      const cleanEmail = String(email || pending.email || "").trim().toLowerCase();
+      let matchedUser = null;
+      data.users = (data.users || []).map((u) => {
+        if ((u.email || "").toLowerCase() === cleanEmail) {
+          const prevCreds = Array.isArray(u.webAuthnCredentials) ? u.webAuthnCredentials : [];
+          const nextCreds = [newCredRecord, ...prevCreds.filter((c) => c.id !== newCredRecord.id)];
+          matchedUser = { ...u, webAuthnCredentials: nextCreds };
+          return matchedUser;
+        }
+        return u;
+      });
+      if (matchedUser) {
+        saveData(data);
+      }
+      res.json({
+        success: true,
+        credential: newCredRecord,
+        user: matchedUser,
+        pendingAccountCreation: !matchedUser,
+        revision: data._revision
+      });
+    } catch (error) {
+      console.error("WebAuthn register/verify error:", error);
+      res.status(400).json({ success: false, message: error.message || "Biometric registration verification failed." });
+    }
+  });
+  app.post("/api/webauthn/login/options", (req, res) => {
+    try {
+      cleanupExpiredChallenges();
+      const data = loadData();
+      if (ensureSeedUsers(data)) {
+        saveData(data, false);
+      }
+      const rawEmail = String(req.body?.email || "").trim().toLowerCase();
+      const rpId = String(req.body?.rpId || req.hostname || "localhost").split(":")[0];
+      let allowCredentials = [];
+      if (rawEmail) {
+        const user = (data.users || []).find((u) => (u.email || "").toLowerCase() === rawEmail);
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: "No client account found for this email address."
+          });
+        }
+        const creds = Array.isArray(user.webAuthnCredentials) ? user.webAuthnCredentials : [];
+        if (creds.length === 0) {
+          return res.status(404).json({
+            success: false,
+            code: "NO_CREDENTIALS",
+            message: "No biometric passkey is enrolled yet for this account. Enroll one using your password below."
+          });
+        }
+        allowCredentials = creds.map((c) => ({
+          id: c.id,
+          type: "public-key",
+          transports: c.transports || ["internal"]
+        }));
+      }
+      const challenge = toBase64Url(crypto.randomBytes(32));
+      const challengeId = `wa-auth-${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
+      webAuthnChallenges.set(challengeId, {
+        challenge,
+        type: "login",
+        email: rawEmail || void 0,
+        rpId,
+        expiresAt: Date.now() + 5 * 60 * 1e3
+      });
+      res.json({
+        success: true,
+        challengeId,
+        options: {
+          challenge,
+          rpId,
+          timeout: 6e4,
+          userVerification: "required",
+          allowCredentials
+        }
+      });
+    } catch (error) {
+      console.error("WebAuthn login/options error:", error);
+      res.status(500).json({ success: false, message: error.message || "Failed to generate biometric login challenge." });
+    }
+  });
+  app.post("/api/webauthn/login/verify", (req, res) => {
+    try {
+      cleanupExpiredChallenges();
+      const { challengeId, email, credential } = req.body || {};
+      const pending = webAuthnChallenges.get(String(challengeId || ""));
+      if (!pending || pending.type !== "login") {
+        return res.status(400).json({ success: false, message: "Biometric authentication challenge expired or invalid. Please retry." });
+      }
+      webAuthnChallenges.delete(String(challengeId));
+      const resp = credential?.response;
+      if (!credential?.id || !resp?.clientDataJSON || !resp?.authenticatorData || !resp?.signature) {
+        return res.status(400).json({ success: false, message: "Incomplete WebAuthn assertion payload." });
+      }
+      const clientDataBuf = fromBase64Url(resp.clientDataJSON);
+      const clientData = JSON.parse(clientDataBuf.toString("utf8"));
+      if (clientData.type !== "webauthn.get") {
+        return res.status(400).json({ success: false, message: "Invalid WebAuthn assertion type." });
+      }
+      if (clientData.challenge !== pending.challenge) {
+        return res.status(400).json({ success: false, message: "Biometric login challenge mismatch." });
+      }
+      const data = loadData();
+      ensureSeedUsers(data);
+      const cleanEmail = String(email || pending.email || "").trim().toLowerCase();
+      let matchedUser = null;
+      let matchedCred = null;
+      for (const u of data.users || []) {
+        if (cleanEmail && (u.email || "").toLowerCase() !== cleanEmail) continue;
+        const creds = Array.isArray(u.webAuthnCredentials) ? u.webAuthnCredentials : [];
+        const found = creds.find((c) => c.id === credential.id);
+        if (found) {
+          matchedUser = u;
+          matchedCred = found;
+          break;
+        }
+      }
+      if (!matchedUser || !matchedCred) {
+        return res.status(404).json({
+          success: false,
+          message: "Biometric credential is not registered to an account on this portal."
+        });
+      }
+      const authDataBuf = fromBase64Url(resp.authenticatorData);
+      if (authDataBuf.length < 37) {
+        return res.status(400).json({ success: false, message: "Malformed authenticatorData." });
+      }
+      const flags = authDataBuf[32];
+      const userPresent = (flags & 1) !== 0;
+      if (!userPresent) {
+        return res.status(401).json({ success: false, message: "Biometric user presence verification was not completed." });
+      }
+      const rpIdHash = authDataBuf.subarray(0, 32);
+      const expectedRpHash = crypto.createHash("sha256").update(pending.rpId).digest();
+      if (!rpIdHash.equals(expectedRpHash)) {
+        return res.status(401).json({ success: false, message: "WebAuthn relying party domain verification failed." });
+      }
+      const newCounter = authDataBuf.readUInt32BE(33);
+      if (matchedCred.counter > 0 && newCounter > 0 && newCounter <= matchedCred.counter) {
+        return res.status(401).json({ success: false, message: "Security warning: possible cloned authenticator counter detected." });
+      }
+      const clientDataHash = crypto.createHash("sha256").update(clientDataBuf).digest();
+      const signedPayload = Buffer.concat([authDataBuf, clientDataHash]);
+      const signatureBuf = fromBase64Url(resp.signature);
+      const keyObj = crypto.createPublicKey({
+        key: fromBase64Url(matchedCred.publicKeySpki),
+        format: "der",
+        type: "spki"
+      });
+      let isSignatureValid = false;
+      try {
+        isSignatureValid = crypto.verify("sha256", signedPayload, keyObj, signatureBuf);
+      } catch {
+        isSignatureValid = false;
+      }
+      if (!isSignatureValid && signatureBuf.length === 64) {
+        try {
+          isSignatureValid = crypto.verify("sha256", signedPayload, { key: keyObj, dsaEncoding: "ieee-p1363" }, signatureBuf);
+        } catch {
+          isSignatureValid = false;
+        }
+      }
+      if (!isSignatureValid) {
+        return res.status(401).json({ success: false, message: "Biometric cryptographic signature verification failed." });
+      }
+      if (matchedUser.status === "pending") {
+        return res.status(403).json({
+          success: false,
+          message: "Biometric signature verified, but your account is still PENDING APPROVAL by DeRoyalTech System Administrators."
+        });
+      }
+      if (matchedUser.status === "rejected") {
+        return res.status(403).json({
+          success: false,
+          message: "Your client portal access has been restricted. Contact support@deroyaltech.com."
+        });
+      }
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      data.users = (data.users || []).map((u) => {
+        if (u.id === matchedUser.id) {
+          const nextCreds = (u.webAuthnCredentials || []).map(
+            (c) => c.id === matchedCred.id ? { ...c, counter: newCounter, lastUsedAt: nowIso } : c
+          );
+          matchedUser = { ...u, webAuthnCredentials: nextCreds };
+          return matchedUser;
+        }
+        return u;
+      });
+      saveData(data);
+      res.json({
+        success: true,
+        user: matchedUser,
+        authenticatedWith: {
+          credentialId: matchedCred.id,
+          deviceName: matchedCred.deviceName,
+          authenticatorType: matchedCred.authenticatorType
+        },
+        revision: data._revision
+      });
+    } catch (error) {
+      console.error("WebAuthn login/verify error:", error);
+      res.status(500).json({ success: false, message: error.message || "Biometric authentication verification error." });
+    }
+  });
+  app.delete("/api/webauthn/credentials/:credentialId", (req, res) => {
+    const { credentialId } = req.params;
+    const { userId, email } = req.body || {};
+    const data = loadData();
+    ensureSeedUsers(data);
+    let updatedUser = null;
+    data.users = (data.users || []).map((u) => {
+      const matchesUser = userId && u.id === userId || email && (u.email || "").toLowerCase() === String(email).toLowerCase() || !userId && !email;
+      if (matchesUser && Array.isArray(u.webAuthnCredentials)) {
+        const nextCreds = u.webAuthnCredentials.filter((c) => c.id !== credentialId);
+        if (nextCreds.length !== u.webAuthnCredentials.length) {
+          updatedUser = { ...u, webAuthnCredentials: nextCreds };
+          return updatedUser;
+        }
+      }
+      return u;
+    });
+    if (updatedUser) {
+      saveData(data);
+    }
+    res.json({ success: true, user: updatedUser, revision: data._revision });
+  });
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`DeRoyalTech Server running on http://${HOST}:${PORT}`);
+    console.log(`  \u279C  Local:   http://localhost:${PORT}/`);
+    console.log(`  \u279C  Network: http://${HOST}:${PORT}/`);
+  });
+  server.on("error", (err) => {
+    console.error("Server listen error:", err);
+  });
   const isProduction = process.env.NODE_ENV === "production";
   if (!isProduction) {
-    const vite = await createViteServer({
+    const vitePromise = createViteServer({
       server: {
         middlewareMode: true,
         hmr: false,
+        ws: false,
         watch: null
       },
       appType: "spa"
     });
-    app.use(vite.middlewares);
+    app.use(async (req, res, next) => {
+      if (req.originalUrl.startsWith("/api")) {
+        return next();
+      }
+      try {
+        const vite = await vitePromise;
+        vite.middlewares(req, res, next);
+      } catch (err) {
+        next(err);
+      }
+    });
     app.use("*", async (req, res, next) => {
       const url = req.originalUrl;
       if (url.startsWith("/api")) {
         return next();
       }
+      let viteInstance = null;
       try {
+        viteInstance = await vitePromise;
         const indexPath = path.resolve(__dirname, "index.html");
         let template = fs.readFileSync(indexPath, "utf-8");
-        template = await vite.transformIndexHtml(url, template);
+        template = await viteInstance.transformIndexHtml(url, template);
         res.status(200).set({ "Content-Type": "text/html" }).end(template);
       } catch (err) {
-        vite.ssrFixStacktrace(err);
+        if (viteInstance) {
+          viteInstance.ssrFixStacktrace(err);
+        }
         next(err);
       }
     });
@@ -685,8 +1424,5 @@ We welcome the opportunity to review this scope in detail with your executive le
       res.sendFile(path.resolve(distPath, "index.html"));
     });
   }
-  app.listen(PORT, HOST, () => {
-    console.log(`DeRoyalTech Server running on http://${HOST}:${PORT}`);
-  });
 }
 startServer();

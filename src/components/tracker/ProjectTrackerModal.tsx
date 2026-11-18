@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useSite } from '../../context/SiteContext.tsx';
 import { TrackedProject, ProjectMilestone, ProjectLogEntry, ProjectEmailAlert } from '../../types/index.ts';
+import { ProjectCloudBackupManager } from './ProjectCloudBackupManager.tsx';
 
 export const ProjectTrackerModal: React.FC = () => {
   const { 
@@ -503,6 +504,9 @@ export const ProjectTrackerModal: React.FC = () => {
                   </p>
                 </div>
               </div>
+
+              {/* Automated Weekly Cloud Progress Backup Manager */}
+              <ProjectCloudBackupManager project={currentProject} />
 
             </div>
           ) : (

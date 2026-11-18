@@ -142,6 +142,19 @@ export interface AdminDeviceSession {
   ipMock?: string;
 }
 
+export interface WebAuthnCredential {
+  id: string;
+  rawId: string;
+  publicKeySpki: string;
+  algorithm: number;
+  counter: number;
+  deviceName: string;
+  transports?: string[];
+  authenticatorType: 'platform' | 'cross-platform' | 'virtual-fido2';
+  createdAt: string;
+  lastUsedAt?: string;
+}
+
 export interface ClientUser {
   id: string;
   fullName: string;
@@ -157,6 +170,8 @@ export interface ClientUser {
   approvedAt?: string;
   approvedBy?: string;
   activeSessions?: AdminDeviceSession[]; // Tracks concurrent active devices (max 2 for admin users)
+  cloudBackups?: ProjectBackupSnapshot[]; // Client account snapshot storage
+  webAuthnCredentials?: WebAuthnCredential[]; // Registered biometric / FIDO2 passkey credentials
 }
 
 export interface ConsultationBooking {
@@ -246,6 +261,8 @@ export interface SiteConfig {
   globalPriceAdjustmentPercent?: number; // e.g. +10 or -15 on all products
   softwarePriceAdjustmentPercent?: number; // category specific adjustment
   hardwarePriceAdjustmentPercent?: number; // category specific adjustment
+  enableServiceNegotiations?: boolean; // When true, clients can counter offer service prices; when false, fixed MSRP
+  autoBackupIntervalDays?: number; // Defaults to 7 days (weekly)
 }
 
 export interface InquiryItem {
@@ -417,6 +434,10 @@ export interface TrackedProject {
   milestones: ProjectMilestone[];
   updatesLog: ProjectLogEntry[];
   adminNotes?: string;
+  lastBackupDate?: string;
+  nextScheduledBackupDate?: string;
+  autoBackupEnabled?: boolean;
+  backupsCount?: number;
 }
 
 // ==================== PROJECT TRACKER EMAIL NOTIFICATIONS ====================
@@ -544,5 +565,29 @@ export interface PriceNegotiation {
     adminName: string;
   };
 }
+
+// ==================== AUTOMATED PROJECT CLOUD BACKUP SNAPSHOTS ====================
+export interface ProjectBackupSnapshot {
+  id: string; // e.g. "SNAP-DRT-2026-W46-01"
+  projectId: string; // e.g. "DRT-2026-7841"
+  projectTitle: string;
+  clientEmail: string;
+  createdAt: string; // ISO timestamp
+  type: 'automated_weekly' | 'manual';
+  stage: ProjectStageStatus;
+  stageLabel: string;
+  progressPercent: number;
+  completedMilestonesCount: number;
+  totalMilestonesCount: number;
+  snapshotData: {
+    project: TrackedProject;
+    systemTimestamp: string;
+    checksum: string;
+  };
+  fileSizeBytes: number;
+  note?: string;
+  syncedToCloud: boolean;
+}
+
 
 

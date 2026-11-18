@@ -44,6 +44,7 @@ export const PriceNegotiationModal: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedSuccess, setSubmittedSuccess] = useState(false);
+  const [submittedRefId, setSubmittedRefId] = useState<string>('');
 
   if (!isNegotiationModalOpen || !negotiationTargetItem) {
     return null;
@@ -60,7 +61,7 @@ export const PriceNegotiationModal: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      await submitNegotiation({
+      const created = await submitNegotiation({
         itemType: negotiationTargetItem.type,
         itemId: negotiationTargetItem.id,
         itemTitle: negotiationTargetItem.title,
@@ -72,6 +73,7 @@ export const PriceNegotiationModal: React.FC = () => {
         clientPhone: phone,
         clientNotes: notes
       });
+      setSubmittedRefId(created.id);
       setSubmittedSuccess(true);
     } catch (err) {
       console.error('Error submitting negotiation:', err);
@@ -83,6 +85,7 @@ export const PriceNegotiationModal: React.FC = () => {
   const handleClose = () => {
     setIsNegotiationModalOpen(false);
     setSubmittedSuccess(false);
+    setSubmittedRefId('');
   };
 
   const diffAmount = proposedPrice - currentAdjustedPrice;
@@ -121,8 +124,16 @@ export const PriceNegotiationModal: React.FC = () => {
               Price Proposal Submitted!
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
-              Your commercial proposal of <strong className="text-slate-900 dark:text-white font-mono">GH₵ {proposedPrice.toLocaleString()}</strong> for <em>"{negotiationTargetItem.title}"</em> has been transmitted to our senior commercial team in Accra. You will receive real-time notifications once reviewed.
+              Your commercial proposal of <strong className="text-slate-900 dark:text-white font-mono">GH₵ {proposedPrice.toLocaleString()}</strong> for <em>"{negotiationTargetItem.title}"</em> has been transmitted to our senior commercial team in Accra. Use the Notification Bell at the top of the page with your private ID below to check for admin approval or counter-offers.
             </p>
+            {submittedRefId && (
+              <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 inline-block">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Your Private Service / Negotiation ID</span>
+                <span className="font-mono text-sm font-extrabold text-blue-600 dark:text-blue-400 select-all">
+                  {submittedRefId}
+                </span>
+              </div>
+            )}
             <div className="pt-3">
               <button
                 type="button"

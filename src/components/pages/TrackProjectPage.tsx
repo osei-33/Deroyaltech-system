@@ -29,6 +29,7 @@ import {
 import { useSite } from '../../context/SiteContext.tsx';
 import { TrackedProject, ProjectMilestone, ProjectLogEntry, ProjectEmailAlert } from '../../types/index.ts';
 import { InteractiveProjectTimeline } from '../tracker/InteractiveProjectTimeline.tsx';
+import { ProjectCloudBackupManager } from '../tracker/ProjectCloudBackupManager.tsx';
 import { generateProjectPdfReport } from '../../utils/generateProjectPdfReport.ts';
 
 interface TrackProjectPageProps {
@@ -350,6 +351,9 @@ export const TrackProjectPage: React.FC<TrackProjectPageProps> = ({ embedded = f
               <div className="lg:col-span-7 space-y-6">
                 {/* Interactive Visual Milestone Timeline Component */}
                 <InteractiveProjectTimeline project={currentProject} />
+
+                {/* Automated Cloud Backup Trigger & Client Storage Snapshots */}
+                <ProjectCloudBackupManager project={currentProject} />
 
                 {/* Tech Stack & Assigned Team */}
                 <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-7 border border-slate-200 dark:border-slate-800 shadow-md space-y-4">

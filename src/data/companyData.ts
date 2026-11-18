@@ -138,7 +138,9 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
     website: 'https://deroyal.tech',
     regNumber: 'RC-2024-8921',
     sealText: 'AUTHENTICATED • DEROYALTECH SYSTEMS ACCRA'
-  }
+  },
+  enableServiceNegotiations: true,
+  autoBackupIntervalDays: 7
 };
 
 export const COMPANY_SERVICES: ServiceItem[] = [

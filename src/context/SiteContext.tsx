@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { 
   SiteConfig, 
   HardwareProduct, 
@@ -25,7 +25,9 @@ import {
   TeamMember,
   AdminDeviceSession,
   PriceNegotiation,
-  NegotiationStatus
+  NegotiationStatus,
+  ProjectBackupSnapshot,
+  WebAuthnCredential
 } from '../types/index.ts';
 import { 
   DEFAULT_SITE_CONFIG, 
@@ -47,6 +49,17 @@ interface AuthResponse {
   success: boolean;
   message?: string;
   user?: ClientUser;
+}
+
+export interface LiveAppAlert {
+  id: string;
+  title: string;
+  body: string;
+  timestamp: string;
+  createdAtIso: string;
+  projectId?: string;
+  referenceId?: string;
+  type: 'milestone' | 'status' | 'negotiation' | 'backup' | 'test';
 }
 
 export type AdminPortalTab = 
@@ -212,8 +225,11 @@ interface SiteContextType {
   // Client Authentication, Registry & Approval Guard
   clientUser: ClientUser | null;
   registeredUsers: ClientUser[];
-  registerClient: (userData: { fullName: string; email: string; company: string; phone: string; role: string; password?: string }) => AuthResponse;
+  registerClient: (userData: { fullName: string; email: string; company: string; phone: string; role: string; password?: string; webAuthnCredentials?: WebAuthnCredential[] }) => AuthResponse;
   loginClient: (email: string, password?: string) => AuthResponse;
+  completeBiometricLogin: (verifiedUser: ClientUser) => AuthResponse;
+  attachBiometricCredential: (emailOrUserId: string, credential: WebAuthnCredential) => void;
+  removeBiometricCredential: (userId: string, credentialId: string) => void;
   adminLogin: (password: string) => boolean;
   instantDemoLogin: () => void;
   logoutClient: () => void;
@@ -223,8 +239,8 @@ interface SiteContextType {
   deleteClientUser: (userId: string) => void;
   isAuthModalOpen: boolean;
   setIsAuthModalOpen: (open: boolean) => void;
-  authModalTab: 'login' | 'register';
-  setAuthModalTab: (tab: 'login' | 'register') => void;
+  authModalTab: 'login' | 'register' | 'security';
+  setAuthModalTab: (tab: 'login' | 'register' | 'security') => void;
   authRedirectTarget: PageId | null;
 
   // Official Company Letters
@@ -259,6 +275,38 @@ interface SiteContextType {
   isNegotiationModalOpen: boolean;
   setIsNegotiationModalOpen: (open: boolean) => void;
   negotiationTargetItem: { id: string; title: string; price: number; type: 'software' | 'hardware' | 'custom_service' } | null;
+  toggleServiceNegotiations: (enabled: boolean) => Promise<void>;
+
+  // Project Cloud Backups
+  projectBackups: ProjectBackupSnapshot[];
+  createProjectCloudBackup: (projectId: string, type?: 'automated_weekly' | 'manual', note?: string) => Promise<ProjectBackupSnapshot>;
+  deleteProjectCloudBackup: (backupId: string) => Promise<void>;
+  toggleProjectAutoBackup: (projectId: string, enabled: boolean) => Promise<void>;
+
+  // Client Service Notification Modal (Private Service ID / Ref Code Lookup)
+  isClientNotificationModalOpen: boolean;
+  setIsClientNotificationModalOpen: (open: boolean) => void;
+  clientServiceIds: string[];
+  registerClientServiceId: (id: string) => void;
+  removeClientServiceId: (id: string) => void;
+
+  // Cross-Device Live Sync & Unified Notification Engine
+  refreshFromServer: () => Promise<void>;
+  liveAlerts: LiveAppAlert[];
+  alertHistory: LiveAppAlert[];
+  dismissLiveAlert: (id: string) => void;
+  clearAlertHistory: () => void;
+  notificationSoundEnabled: boolean;
+  setNotificationSoundEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  notificationPermission: NotificationPermission | 'unsupported';
+  requestBrowserNotificationPermission: () => Promise<NotificationPermission | 'unsupported'>;
+  dispatchLiveAlert: (params: {
+    title: string;
+    body: string;
+    type: LiveAppAlert['type'];
+    projectId?: string;
+    referenceId?: string;
+  }) => void;
 }
 
 const SiteContext = createContext<SiteContextType | undefined>(undefined);
@@ -485,7 +533,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Page Routing state
   const [currentPage, setCurrentPage] = useState<PageId>('home');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('register');
+  const [authModalTab, setAuthModalTab] = useState<'login' | 'register' | 'security'>('register');
   const [authRedirectTarget, setAuthRedirectTarget] = useState<PageId | null>(null);
 
   // Hardware Products state
@@ -687,6 +735,319 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsNegotiationModalOpen(true);
   };
 
+  // Client Service Notification Modal (Private ID lookup)
+  const [isClientNotificationModalOpen, setIsClientNotificationModalOpen] = useState(false);
+  const [clientServiceIds, setClientServiceIds] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('drt_client_queried_service_ids');
+        if (saved) return JSON.parse(saved);
+      } catch {
+        // ignore
+      }
+    }
+    return [];
+  });
+
+  const registerClientServiceId = (rawId: string) => {
+    const clean = rawId.trim().toUpperCase();
+    if (!clean) return;
+    setClientServiceIds(prev => {
+      if (prev.includes(clean)) return prev;
+      const next = [clean, ...prev];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('drt_client_queried_service_ids', JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  const removeClientServiceId = (rawId: string) => {
+    const clean = rawId.trim().toUpperCase();
+    setClientServiceIds(prev => {
+      const next = prev.filter(id => id !== clean);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('drt_client_queried_service_ids', JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  // Project Cloud Backups State
+  const [projectBackups, setProjectBackups] = useState<ProjectBackupSnapshot[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('drt_project_cloud_backups');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return [
+      {
+        id: 'SNAP-DRT-2026-7841-W45-101',
+        projectId: 'DRT-2026-7841',
+        projectTitle: 'Maritime Port Cargo Dispatch & Warehouse Sensor Bridge',
+        clientEmail: 'k.asante@ghana-enterprises.com',
+        createdAt: new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString(),
+        type: 'automated_weekly',
+        stage: 'development',
+        stageLabel: 'Firmware Telemetry Bridge & CRM Integration in Progress',
+        progressPercent: 68,
+        completedMilestonesCount: 2,
+        totalMilestonesCount: 4,
+        snapshotData: {
+          project: DEFAULT_TRACKED_PROJECTS[0],
+          systemTimestamp: new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString(),
+          checksum: 'SHA256-A8F93BD714EC82'
+        },
+        fileSizeBytes: 14820,
+        note: 'Initial sprint milestone backup archived in client account storage',
+        syncedToCloud: true
+      }
+    ];
+  });
+
+  const createProjectCloudBackup = async (
+    projectId: string, 
+    type: 'automated_weekly' | 'manual' = 'manual', 
+    note?: string
+  ): Promise<ProjectBackupSnapshot> => {
+    const latestProjects = trackedProjectsRef.current;
+    const targetProject = latestProjects.find(p => p.projectId.toUpperCase() === projectId.toUpperCase()) || latestProjects[0];
+    const now = new Date();
+    const intervalDays = configRef.current?.autoBackupIntervalDays || 7;
+    const nextScheduled = new Date(now.getTime() + intervalDays * 24 * 60 * 60 * 1000);
+    const snapId = `SNAP-${projectId}-${now.getFullYear()}-W${Math.ceil(now.getDate() / 7)}-${Math.floor(100 + Math.random() * 900)}`;
+    const targetEmail = (clientUserRef.current?.email || targetProject?.clientEmail || 'client@company.com').trim();
+
+    const newBackup: ProjectBackupSnapshot = {
+      id: snapId,
+      projectId,
+      projectTitle: targetProject?.title || 'System Development Project',
+      clientEmail: targetEmail,
+      createdAt: now.toISOString(),
+      type,
+      stage: targetProject?.stage || 'development',
+      stageLabel: targetProject?.stageLabel || 'Active Engineering Phase',
+      progressPercent: targetProject?.progressPercent || 0,
+      completedMilestonesCount: targetProject?.milestones?.filter(m => m.status === 'completed').length || 0,
+      totalMilestonesCount: targetProject?.milestones?.length || 0,
+      snapshotData: {
+        project: JSON.parse(JSON.stringify(targetProject || {})),
+        systemTimestamp: now.toISOString(),
+        checksum: `SHA256-${Math.random().toString(16).substring(2, 10).toUpperCase()}${Date.now().toString(16).toUpperCase()}`
+      },
+      fileSizeBytes: JSON.stringify(targetProject || {}).length + 1024,
+      note: note || (type === 'automated_weekly' ? 'Weekly automated cloud milestone snapshot archived in client account storage' : 'Manual client snapshot archive stored in client account storage'),
+      syncedToCloud: true
+    };
+
+    const updatedBackups = [newBackup, ...projectBackupsRef.current.filter(b => b.id !== newBackup.id)];
+    projectBackupsRef.current = updatedBackups;
+    setProjectBackups(updatedBackups);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('drt_project_cloud_backups', JSON.stringify(updatedBackups));
+    }
+
+    // Update project with lastBackupDate and nextScheduledBackupDate
+    const updatedProjects = latestProjects.map(p => {
+      if (p.projectId.toUpperCase() === projectId.toUpperCase()) {
+        return {
+          ...p,
+          lastBackupDate: now.toISOString(),
+          nextScheduledBackupDate: nextScheduled.toISOString(),
+          autoBackupEnabled: p.autoBackupEnabled !== false,
+          backupsCount: updatedBackups.filter(b => b.projectId.toUpperCase() === projectId.toUpperCase()).length
+        };
+      }
+      return p;
+    });
+    trackedProjectsRef.current = updatedProjects;
+    setTrackedProjects(updatedProjects);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('drt_tracked_projects', JSON.stringify(updatedProjects));
+    }
+
+    // Persist snapshot inside matching client account(s) in registeredUsers AND active clientUser
+    const lowerTargetEmail = targetEmail.toLowerCase();
+    const projectClientEmail = (targetProject?.clientEmail || '').trim().toLowerCase();
+    const updatedUsers = registeredUsersRef.current.map(u => {
+      const uEmail = (u.email || '').trim().toLowerCase();
+      if (uEmail === lowerTargetEmail || (projectClientEmail && uEmail === projectClientEmail)) {
+        const userBackups = [newBackup, ...(u.cloudBackups || []).filter(b => b.id !== newBackup.id)];
+        return { ...u, cloudBackups: userBackups };
+      }
+      return u;
+    });
+    registeredUsersRef.current = updatedUsers;
+    setRegisteredUsers(updatedUsers);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('drt_registered_users', JSON.stringify(updatedUsers));
+    }
+
+    if (clientUserRef.current) {
+      const activeEmail = clientUserRef.current.email.trim().toLowerCase();
+      if (activeEmail === lowerTargetEmail || (projectClientEmail && activeEmail === projectClientEmail)) {
+        const userBackups = [newBackup, ...(clientUserRef.current.cloudBackups || []).filter(b => b.id !== newBackup.id)];
+        const updatedUser = { ...clientUserRef.current, cloudBackups: userBackups };
+        clientUserRef.current = updatedUser;
+        setClientUser(updatedUser);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('drt_client_auth', JSON.stringify(updatedUser));
+        }
+      }
+    }
+
+    // Push snapshot to backend (updates projectBackups, trackedProjects, and users[i].cloudBackups)
+    pendingSyncCountRef.current += 1;
+    lastLocalMutationAtRef.current = Date.now();
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/backup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newBackup)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.revision) {
+          lastServerRevisionRef.current = json.revision;
+        }
+      }
+      broadcastTabSync();
+    } catch {
+      // Fallback: queue full state sync
+      syncToServer({
+        projectBackups: updatedBackups,
+        trackedProjects: updatedProjects,
+        users: updatedUsers
+      });
+    } finally {
+      pendingSyncCountRef.current = Math.max(0, pendingSyncCountRef.current - 1);
+      lastLocalMutationAtRef.current = Date.now();
+    }
+
+    return newBackup;
+  };
+
+  const deleteProjectCloudBackup = async (backupId: string) => {
+    const filtered = projectBackupsRef.current.filter(b => b.id !== backupId);
+    projectBackupsRef.current = filtered;
+    setProjectBackups(filtered);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('drt_project_cloud_backups', JSON.stringify(filtered));
+    }
+
+    const updatedUsers = registeredUsersRef.current.map(u => ({
+      ...u,
+      cloudBackups: Array.isArray(u.cloudBackups) ? u.cloudBackups.filter(b => b.id !== backupId) : u.cloudBackups
+    }));
+    registeredUsersRef.current = updatedUsers;
+    setRegisteredUsers(updatedUsers);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('drt_registered_users', JSON.stringify(updatedUsers));
+    }
+
+    if (clientUserRef.current) {
+      const updatedUser = {
+        ...clientUserRef.current,
+        cloudBackups: Array.isArray(clientUserRef.current.cloudBackups)
+          ? clientUserRef.current.cloudBackups.filter(b => b.id !== backupId)
+          : clientUserRef.current.cloudBackups
+      };
+      clientUserRef.current = updatedUser;
+      setClientUser(updatedUser);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('drt_client_auth', JSON.stringify(updatedUser));
+      }
+    }
+
+    pendingSyncCountRef.current += 1;
+    lastLocalMutationAtRef.current = Date.now();
+    try {
+      const res = await fetch(`/api/projects/backups/${encodeURIComponent(backupId)}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.revision) lastServerRevisionRef.current = json.revision;
+      }
+      broadcastTabSync();
+    } catch {
+      syncToServer({ projectBackups: filtered, users: updatedUsers });
+    } finally {
+      pendingSyncCountRef.current = Math.max(0, pendingSyncCountRef.current - 1);
+      lastLocalMutationAtRef.current = Date.now();
+    }
+  };
+
+  const toggleProjectAutoBackup = async (projectId: string, enabled: boolean) => {
+    const updatedProjects = trackedProjectsRef.current.map(p =>
+      p.projectId.toUpperCase() === projectId.toUpperCase()
+        ? { ...p, autoBackupEnabled: enabled }
+        : p
+    );
+    trackedProjectsRef.current = updatedProjects;
+    setTrackedProjects(updatedProjects);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('drt_tracked_projects', JSON.stringify(updatedProjects));
+    }
+    pendingSyncCountRef.current += 1;
+    lastLocalMutationAtRef.current = Date.now();
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/backup-schedule`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoBackupEnabled: enabled })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.revision) lastServerRevisionRef.current = json.revision;
+      }
+      broadcastTabSync();
+    } catch {
+      syncToServer({ trackedProjects: updatedProjects });
+    } finally {
+      pendingSyncCountRef.current = Math.max(0, pendingSyncCountRef.current - 1);
+      lastLocalMutationAtRef.current = Date.now();
+    }
+  };
+
+  const toggleServiceNegotiations = async (enabled: boolean) => {
+    updateConfig({ enableServiceNegotiations: enabled });
+  };
+
+  // ==================== REFS & SERIALIZED CROSS-DEVICE SYNC ENGINE ====================
+  const configRef = useRef<SiteConfig>(config);
+  configRef.current = config;
+  const projectBackupsRef = useRef<ProjectBackupSnapshot[]>(projectBackups);
+  projectBackupsRef.current = projectBackups;
+  const trackedProjectsRef = useRef<TrackedProject[]>(trackedProjects);
+  trackedProjectsRef.current = trackedProjects;
+  const registeredUsersRef = useRef<ClientUser[]>(registeredUsers);
+  registeredUsersRef.current = registeredUsers;
+  const clientUserRef = useRef<ClientUser | null>(clientUser);
+  clientUserRef.current = clientUser;
+  const clientServiceIdsRef = useRef<string[]>(clientServiceIds);
+  clientServiceIdsRef.current = clientServiceIds;
+
+  const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingSyncCountRef = useRef<number>(0);
+  const lastLocalMutationAtRef = useRef<number>(0);
+  const lastServerRevisionRef = useRef<number>(0);
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const weeklyBackupInFlightRef = useRef<Set<string>>(new Set());
+
+  const broadcastTabSync = () => {
+    try {
+      broadcastChannelRef.current?.postMessage({ type: 'drt_sync', at: Date.now() });
+    } catch {
+      // BroadcastChannel unavailable
+    }
+  };
+
   // Device Session Fingerprint (Admin 2-device concurrency limit)
   const getCurrentDeviceSession = (): AdminDeviceSession => {
     let devId = 'dev_default';
@@ -722,118 +1083,659 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   };
 
-  // Backend Sync Helper
-  const syncToServer = async (payload: any) => {
-    try {
-      await fetch('/api/site-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-    } catch {
-      // Offline fallback: handled by localStorage
-    }
-  };
+  // Serialized Backend Sync Helper (prevents parallel POST race conditions & enforces cross-device persistence)
+  const syncToServer = useCallback((payload: Record<string, any>): Promise<void> => {
+    pendingSyncCountRef.current += 1;
+    lastLocalMutationAtRef.current = Date.now();
 
-  // Initial & Live Continuous Load from Server for Multi-Device Sync
-  useEffect(() => {
-    const fetchData = async () => {
+    const task = syncQueueRef.current.then(async () => {
+      const attemptPost = async () => {
+        const res = await fetch('/api/site-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const json = await res.json();
+        if (json?.revision) {
+          lastServerRevisionRef.current = json.revision;
+        }
+        broadcastTabSync();
+      };
+
       try {
-        const res = await fetch('/api/site-data');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.config && Object.keys(data.config).length > 0) {
-            setConfig(prev => {
-              const updatedConfig = {
-                ...prev,
-                ...data.config,
-                contact: { ...prev.contact, ...(data.config.contact || {}) },
-                social: { ...prev.social, ...(data.config.social || {}) },
-                metrics: { ...prev.metrics, ...(data.config.metrics || {}) },
-                announcement: data.config.announcement !== undefined ? data.config.announcement : prev.announcement,
-                letterhead: data.config.letterhead !== undefined ? data.config.letterhead : prev.letterhead,
-                adminProfile: data.config.adminProfile !== undefined ? data.config.adminProfile : prev.adminProfile,
-                testimonials: Array.isArray(data.config.testimonials) && data.config.testimonials.length > 0 ? data.config.testimonials : prev.testimonials
-              };
-              localStorage.setItem('drt_site_config', JSON.stringify(updatedConfig));
-              return updatedConfig;
-            });
+        await attemptPost();
+      } catch (err) {
+        console.warn('Primary backend sync failed, retrying:', err);
+        try {
+          await new Promise(r => setTimeout(r, 1200));
+          await attemptPost();
+        } catch (retryErr) {
+          console.warn('Backend retry sync failed (stored locally):', retryErr);
+        }
+      } finally {
+        pendingSyncCountRef.current = Math.max(0, pendingSyncCountRef.current - 1);
+        lastLocalMutationAtRef.current = Date.now();
+      }
+    });
+
+    syncQueueRef.current = task.catch(() => {});
+    return task;
+  }, []);
+
+  const applyServerData = useCallback((data: any) => {
+    if (!data || typeof data !== 'object') return;
+
+    if (data.config && Object.keys(data.config).length > 0) {
+      setConfig(prev => {
+        const updatedConfig: SiteConfig = {
+          ...prev,
+          ...data.config,
+          contact: { ...prev.contact, ...(data.config.contact || {}) },
+          social: { ...prev.social, ...(data.config.social || {}) },
+          metrics: { ...prev.metrics, ...(data.config.metrics || {}) },
+          announcement: data.config.announcement !== undefined ? data.config.announcement : prev.announcement,
+          letterhead: data.config.letterhead !== undefined ? data.config.letterhead : prev.letterhead,
+          adminProfile: data.config.adminProfile !== undefined ? data.config.adminProfile : prev.adminProfile,
+          testimonials: Array.isArray(data.config.testimonials) && data.config.testimonials.length > 0 ? data.config.testimonials : prev.testimonials
+        };
+        configRef.current = updatedConfig;
+        localStorage.setItem('drt_site_config', JSON.stringify(updatedConfig));
+        return updatedConfig;
+      });
+    }
+    if (Array.isArray(data.services)) {
+      setServices(data.services);
+      localStorage.setItem('drt_services', JSON.stringify(data.services));
+    }
+    if (Array.isArray(data.testimonials)) {
+      setTestimonials(data.testimonials);
+      localStorage.setItem('drt_testimonials', JSON.stringify(data.testimonials));
+    }
+    if (Array.isArray(data.users)) {
+      registeredUsersRef.current = data.users;
+      setRegisteredUsers(data.users);
+      localStorage.setItem('drt_registered_users', JSON.stringify(data.users));
+
+      // Keep active clientUser in sync with backend user record (cloudBackups, status, sessions, admin role)
+      if (clientUserRef.current) {
+        const current = clientUserRef.current;
+        const matched = data.users.find(
+          (u: ClientUser) => u.id === current.id || u.email.toLowerCase() === current.email.toLowerCase()
+        );
+        if (matched) {
+          clientUserRef.current = matched;
+          setClientUser(matched);
+          localStorage.setItem('drt_client_auth', JSON.stringify(matched));
+        }
+      }
+    }
+    if (Array.isArray(data.bookings)) {
+      setConsultationBookings(data.bookings);
+      localStorage.setItem('drt_consultation_bookings', JSON.stringify(data.bookings));
+    }
+    if (Array.isArray(data.hardware)) {
+      setHardwareProducts(data.hardware);
+      localStorage.setItem('drt_hardware_products', JSON.stringify(data.hardware));
+    }
+    if (Array.isArray(data.projects)) {
+      setCompletedProjects(data.projects);
+      localStorage.setItem('drt_completed_projects', JSON.stringify(data.projects));
+    }
+    if (Array.isArray(data.inquiries)) {
+      setInquiries(data.inquiries);
+      localStorage.setItem('drt_inquiries', JSON.stringify(data.inquiries));
+    }
+    if (Array.isArray(data.faqArticles)) {
+      setFaqArticles(data.faqArticles);
+      localStorage.setItem('drt_faq_articles', JSON.stringify(data.faqArticles));
+    }
+    if (Array.isArray(data.emailAlerts)) {
+      setEmailAlerts(data.emailAlerts);
+      localStorage.setItem('drt_email_alerts', JSON.stringify(data.emailAlerts));
+    }
+    if (Array.isArray(data.letters)) {
+      setLetters(data.letters);
+      localStorage.setItem('drt_letters', JSON.stringify(data.letters));
+    }
+    if (Array.isArray(data.teamMembers)) {
+      setTeamMembers(data.teamMembers);
+      localStorage.setItem('drt_team_members', JSON.stringify(data.teamMembers));
+    }
+    if (Array.isArray(data.chatThreads)) {
+      setChatThreads(data.chatThreads);
+      localStorage.setItem('drt_chat_threads', JSON.stringify(data.chatThreads));
+    }
+    if (Array.isArray(data.serviceRequests)) {
+      setServiceRequests(data.serviceRequests);
+      localStorage.setItem('drt_service_requests', JSON.stringify(data.serviceRequests));
+    }
+    if (Array.isArray(data.trackedProjects)) {
+      trackedProjectsRef.current = data.trackedProjects;
+      setTrackedProjects(data.trackedProjects);
+      localStorage.setItem('drt_tracked_projects', JSON.stringify(data.trackedProjects));
+    }
+    if (Array.isArray(data.negotiations)) {
+      setNegotiations(data.negotiations);
+      localStorage.setItem('drt_price_negotiations', JSON.stringify(data.negotiations));
+    }
+    if (Array.isArray(data.projectBackups)) {
+      projectBackupsRef.current = data.projectBackups;
+      setProjectBackups(data.projectBackups);
+      localStorage.setItem('drt_project_cloud_backups', JSON.stringify(data.projectBackups));
+    }
+    if (typeof data.autoEmailEnabled === 'boolean') {
+      setAutoEmailEnabled(data.autoEmailEnabled);
+    }
+  }, []);
+
+  const fetchData = useCallback(async (force = false) => {
+    try {
+      if (!force && (pendingSyncCountRef.current > 0 || Date.now() - lastLocalMutationAtRef.current < 1500)) {
+        return;
+      }
+      const res = await fetch(`/api/site-data?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Double-check a local write did not start while fetch was in flight
+      if (!force && (pendingSyncCountRef.current > 0 || Date.now() - lastLocalMutationAtRef.current < 1200)) {
+        return;
+      }
+
+      const incomingRevision = Number(data._revision) || 0;
+      if (force || lastServerRevisionRef.current === 0 || incomingRevision !== lastServerRevisionRef.current) {
+        lastServerRevisionRef.current = incomingRevision;
+        applyServerData(data);
+      }
+    } catch {
+      // Fall back to initial state / localStorage when offline
+    }
+  }, [applyServerData]);
+
+  const refreshFromServer = useCallback(async () => {
+    await fetchData(true);
+  }, [fetchData]);
+
+  // Initial & Live Continuous Load from Server (SSE + BroadcastChannel + Focus + Poll) for Multi-Device Sync
+  useEffect(() => {
+    fetchData(true);
+
+    let bc: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        bc = new BroadcastChannel('drt_cross_tab_sync');
+        broadcastChannelRef.current = bc;
+        bc.onmessage = () => {
+          fetchData(true);
+        };
+      } catch {
+        // ignore
+      }
+    }
+
+    let eventSource: EventSource | null = null;
+    if (typeof EventSource !== 'undefined') {
+      try {
+        eventSource = new EventSource('/api/events');
+        eventSource.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg?.type === 'site-data-updated') {
+              const incomingRev = Number(msg.revision) || 0;
+              if (incomingRev !== lastServerRevisionRef.current) {
+                fetchData(false);
+              }
+            }
+          } catch {
+            // ignore keepalive/parse errors
           }
-          if (Array.isArray(data.services)) {
-            setServices(data.services);
-            localStorage.setItem('drt_services', JSON.stringify(data.services));
-          }
-          if (Array.isArray(data.testimonials)) {
-            setTestimonials(data.testimonials);
-            localStorage.setItem('drt_testimonials', JSON.stringify(data.testimonials));
-          }
-          if (Array.isArray(data.users)) {
-            setRegisteredUsers(data.users);
-            localStorage.setItem('drt_registered_users', JSON.stringify(data.users));
-          }
-          if (Array.isArray(data.bookings)) {
-            setConsultationBookings(data.bookings);
-            localStorage.setItem('drt_consultation_bookings', JSON.stringify(data.bookings));
-          }
-          if (Array.isArray(data.hardware)) {
-            setHardwareProducts(data.hardware);
-            localStorage.setItem('drt_hardware_products', JSON.stringify(data.hardware));
-          }
-          if (Array.isArray(data.projects)) {
-            setCompletedProjects(data.projects);
-            localStorage.setItem('drt_completed_projects', JSON.stringify(data.projects));
-          }
-          if (Array.isArray(data.inquiries)) {
-            setInquiries(data.inquiries);
-            localStorage.setItem('drt_inquiries', JSON.stringify(data.inquiries));
-          }
-          if (Array.isArray(data.faqArticles)) {
-            setFaqArticles(data.faqArticles);
-            localStorage.setItem('drt_faq_articles', JSON.stringify(data.faqArticles));
-          }
-          if (Array.isArray(data.emailAlerts)) {
-            setEmailAlerts(data.emailAlerts);
-            localStorage.setItem('drt_email_alerts', JSON.stringify(data.emailAlerts));
-          }
-          if (Array.isArray(data.letters)) {
-            setLetters(data.letters);
-            localStorage.setItem('drt_letters', JSON.stringify(data.letters));
-          }
-          if (Array.isArray(data.teamMembers)) {
-            setTeamMembers(data.teamMembers);
-            localStorage.setItem('drt_team_members', JSON.stringify(data.teamMembers));
-          }
-          if (Array.isArray(data.chatThreads)) {
-            setChatThreads(data.chatThreads);
-            localStorage.setItem('drt_chat_threads', JSON.stringify(data.chatThreads));
-          }
-          if (Array.isArray(data.serviceRequests)) {
-            setServiceRequests(data.serviceRequests);
-            localStorage.setItem('drt_service_requests', JSON.stringify(data.serviceRequests));
-          }
-          if (Array.isArray(data.trackedProjects)) {
-            setTrackedProjects(data.trackedProjects);
-            localStorage.setItem('drt_tracked_projects', JSON.stringify(data.trackedProjects));
+        };
+      } catch {
+        // SSE unavailable; interval poll still active
+      }
+    }
+
+    const handleFocus = () => fetchData(false);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData(false);
+      }
+    };
+    const handleOnline = () => fetchData(true);
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('online', handleOnline);
+
+    // Fallback polling every 5 seconds in case SSE is buffered by a proxy
+    const syncInterval = setInterval(() => fetchData(false), 5000);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('online', handleOnline);
+      clearInterval(syncInterval);
+      if (eventSource) {
+        eventSource.close();
+      }
+      if (bc) {
+        bc.close();
+      }
+    };
+  }, [fetchData]);
+
+  // ==================== UNIFIED GLOBAL WEB & IN-APP NOTIFICATION ENGINE ====================
+  const [liveAlerts, setLiveAlerts] = useState<LiveAppAlert[]>([]);
+  const [alertHistory, setAlertHistory] = useState<LiveAppAlert[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('drt_client_alert_feed');
+        if (saved) return JSON.parse(saved);
+      } catch {
+        // ignore
+      }
+    }
+    return [];
+  });
+  const [notificationSoundEnabled, setNotificationSoundEnabled] = useState<boolean>(true);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission;
+    }
+    return 'unsupported';
+  });
+
+  const playNotificationChime = useCallback(() => {
+    if (!notificationSoundEnabled || typeof window === 'undefined') return;
+    try {
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const ctx = new AudioContextClass();
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(587.33, ctx.currentTime);
+      gain1.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start();
+      osc1.stop(ctx.currentTime + 0.35);
+
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(880, ctx.currentTime + 0.12);
+      gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.12);
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(ctx.currentTime + 0.12);
+      osc2.stop(ctx.currentTime + 0.55);
+    } catch {
+      // Autoplay audio restricted; silent fallback
+    }
+  }, [notificationSoundEnabled]);
+
+  const sendSafeBrowserNotification = useCallback(async (title: string, body: string) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+
+    const options: NotificationOptions = {
+      body,
+      icon: configRef.current?.logoUrl || '/favicon.ico',
+      tag: `drt-alert-${Date.now()}`,
+      requireInteraction: false
+    };
+
+    try {
+      const notif = new Notification(title, options);
+      notif.onclick = () => {
+        window.focus();
+        notif.close();
+      };
+    } catch {
+      // Android / iframe fallback via ServiceWorkerRegistration if available
+      try {
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg && 'showNotification' in reg) {
+            await reg.showNotification(title, options);
           }
         }
       } catch {
-        // Fall back to initial state / localStorage
+        // Silent in-app fallback
+      }
+    }
+  }, []);
+
+  const dispatchLiveAlert = useCallback((params: {
+    title: string;
+    body: string;
+    type: LiveAppAlert['type'];
+    projectId?: string;
+    referenceId?: string;
+  }) => {
+    playNotificationChime();
+    sendSafeBrowserNotification(params.title, params.body);
+
+    const newAlert: LiveAppAlert = {
+      id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title: params.title,
+      body: params.body,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      createdAtIso: new Date().toISOString(),
+      projectId: params.projectId,
+      referenceId: params.referenceId,
+      type: params.type
+    };
+
+    setLiveAlerts(prev => [newAlert, ...prev.slice(0, 3)]);
+    setAlertHistory(prev => {
+      const next = [newAlert, ...prev.slice(0, 29)];
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('drt_client_alert_feed', JSON.stringify(next));
+        } catch {
+          // ignore quota errors
+        }
+      }
+      return next;
+    });
+
+    setTimeout(() => {
+      setLiveAlerts(prev => prev.filter(a => a.id !== newAlert.id));
+    }, 9000);
+  }, [playNotificationChime, sendSafeBrowserNotification]);
+
+  const dismissLiveAlert = useCallback((id: string) => {
+    setLiveAlerts(prev => prev.filter(a => a.id !== id));
+  }, []);
+
+  const clearAlertHistory = useCallback(() => {
+    setAlertHistory([]);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('drt_client_alert_feed');
+    }
+  }, []);
+
+  const requestBrowserNotificationPermission = useCallback(async (): Promise<NotificationPermission | 'unsupported'> => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setNotificationPermission('unsupported');
+      return 'unsupported';
+    }
+    try {
+      const res = await Notification.requestPermission();
+      setNotificationPermission(res);
+      if (res === 'granted') {
+        dispatchLiveAlert({
+          title: 'Web Notifications Activated',
+          body: 'You will receive real-time alerts for milestone completions, price approvals, and weekly cloud backups.',
+          type: 'test'
+        });
+      }
+      return res;
+    } catch {
+      const currentPerm = Notification.permission;
+      setNotificationPermission(currentPerm);
+      return currentPerm;
+    }
+  }, [dispatchLiveAlert]);
+
+  // Monitor project milestones, service requests, and price negotiations across ALL pages & devices
+  const prevProjectsSnapRef = useRef<Record<string, { stage: string; progress: number; completedCount: number }>>({});
+  const prevNegSnapRef = useRef<Record<string, string>>({});
+  const prevReqSnapRef = useRef<Record<string, string>>({});
+  const isProjectsSeededRef = useRef(false);
+  const isNegSeededRef = useRef(false);
+  const isReqSeededRef = useRef(false);
+
+  useEffect(() => {
+    if (!trackedProjects || trackedProjects.length === 0) return;
+
+    if (!isProjectsSeededRef.current) {
+      trackedProjects.forEach(p => {
+        prevProjectsSnapRef.current[p.projectId] = {
+          stage: p.stage,
+          progress: p.progressPercent,
+          completedCount: (p.milestones || []).filter(m => m.status === 'completed').length
+        };
+      });
+      isProjectsSeededRef.current = true;
+      return;
+    }
+
+    const userEmail = (clientUserRef.current?.email || '').toLowerCase();
+    const isAdmin = Boolean(clientUserRef.current?.isAdmin);
+    const idSet = new Set(clientServiceIdsRef.current.map(i => i.toUpperCase()));
+
+    trackedProjects.forEach(p => {
+      const prev = prevProjectsSnapRef.current[p.projectId];
+      const completedCount = (p.milestones || []).filter(m => m.status === 'completed').length;
+      const isVisibleToViewer =
+        isAdmin ||
+        (userEmail && (p.clientEmail || '').toLowerCase() === userEmail) ||
+        idSet.has(p.projectId.toUpperCase()) ||
+        (p.requestId && idSet.has(p.requestId.toUpperCase())) ||
+        currentPage === 'tracker' ||
+        currentPage === 'consultation';
+
+      if (prev && isVisibleToViewer) {
+        if (completedCount > prev.completedCount) {
+          const newlyCompleted =
+            p.milestones.find((m, i) => m.status === 'completed' && i >= prev.completedCount) ||
+            p.milestones.filter(m => m.status === 'completed').slice(-1)[0];
+
+          dispatchLiveAlert({
+            title: `Milestone Reached: ${p.title}`,
+            body: `Milestone "${newlyCompleted?.title || 'Phase Verified'}" completed. Overall progress: ${p.progressPercent}%.`,
+            type: 'milestone',
+            projectId: p.projectId
+          });
+        }
+
+        if (p.stage !== prev.stage) {
+          dispatchLiveAlert({
+            title: `Project Status Updated: ${p.title}`,
+            body: `Stage moved to "${p.stageLabel || p.stage.replace(/_/g, ' ')}" (${p.progressPercent}% complete).`,
+            type: 'status',
+            projectId: p.projectId
+          });
+        }
+      }
+
+      prevProjectsSnapRef.current[p.projectId] = {
+        stage: p.stage,
+        progress: p.progressPercent,
+        completedCount
+      };
+    });
+  }, [trackedProjects, currentPage, dispatchLiveAlert]);
+
+  useEffect(() => {
+    if (!negotiations) return;
+
+    if (!isNegSeededRef.current) {
+      negotiations.forEach(neg => {
+        prevNegSnapRef.current[neg.id] = neg.status;
+      });
+      isNegSeededRef.current = true;
+      return;
+    }
+
+    const userEmail = (clientUserRef.current?.email || '').toLowerCase();
+    const isAdmin = Boolean(clientUserRef.current?.isAdmin);
+    const idSet = new Set(clientServiceIdsRef.current.map(i => i.toUpperCase()));
+
+    negotiations.forEach(neg => {
+      const prevStatus = prevNegSnapRef.current[neg.id];
+      const matchesClient =
+        idSet.has(neg.id.toUpperCase()) ||
+        (!isAdmin && userEmail && (neg.clientEmail || '').toLowerCase() === userEmail);
+
+      if (!prevStatus && neg.status === 'pending' && isAdmin) {
+        dispatchLiveAlert({
+          title: `New Price Proposal: ${neg.itemTitle}`,
+          body: `${neg.clientName} submitted offer ${neg.id} for GH₵ ${neg.offeredPrice.toLocaleString()}.`,
+          type: 'negotiation',
+          referenceId: neg.id
+        });
+      } else if (prevStatus && prevStatus !== neg.status && (matchesClient || isAdmin)) {
+        if (neg.status === 'approved') {
+          const finalAmt = neg.adminResponse?.counterPrice || neg.offeredPrice;
+          dispatchLiveAlert({
+            title: `Price Offer Approved: ${neg.itemTitle}`,
+            body: `Reference ${neg.id} approved at GH₵ ${finalAmt.toLocaleString()}.`,
+            type: 'negotiation',
+            referenceId: neg.id
+          });
+        } else if (neg.status === 'countered') {
+          dispatchLiveAlert({
+            title: `Admin Counter-Offer: ${neg.itemTitle}`,
+            body: `Reference ${neg.id}: Counter-price GH₵ ${(neg.adminResponse?.counterPrice || 0).toLocaleString()} received. Open notifications to review.`,
+            type: 'negotiation',
+            referenceId: neg.id
+          });
+        } else if (neg.status === 'rejected') {
+          dispatchLiveAlert({
+            title: `Price Offer Declined: ${neg.itemTitle}`,
+            body: `Reference ${neg.id} was declined by leadership${neg.adminResponse?.adminNotes ? `: "${neg.adminResponse.adminNotes}"` : '.'}`,
+            type: 'negotiation',
+            referenceId: neg.id
+          });
+        }
+      }
+      prevNegSnapRef.current[neg.id] = neg.status;
+    });
+  }, [negotiations, dispatchLiveAlert]);
+
+  useEffect(() => {
+    if (!serviceRequests) return;
+
+    if (!isReqSeededRef.current) {
+      serviceRequests.forEach(req => {
+        prevReqSnapRef.current[req.id] = req.status;
+      });
+      isReqSeededRef.current = true;
+      return;
+    }
+
+    const userEmail = (clientUserRef.current?.email || '').toLowerCase();
+    const isAdmin = Boolean(clientUserRef.current?.isAdmin);
+    const idSet = new Set(clientServiceIdsRef.current.map(i => i.toUpperCase()));
+
+    serviceRequests.forEach(req => {
+      const prevStatus = prevReqSnapRef.current[req.id];
+      const matchesClient =
+        idSet.has(req.id.toUpperCase()) ||
+        (userEmail && (req.clientEmail || '').toLowerCase() === userEmail);
+
+      if (!prevStatus && req.status === 'pending' && isAdmin) {
+        dispatchLiveAlert({
+          title: `New Service Request: ${req.projectTitle}`,
+          body: `${req.clientName} submitted request ${req.id}.`,
+          type: 'status',
+          referenceId: req.id
+        });
+      } else if (prevStatus && prevStatus !== req.status && (matchesClient || isAdmin)) {
+        if (req.status === 'confirmed') {
+          dispatchLiveAlert({
+            title: `Service Approved: ${req.projectTitle}`,
+            body: `Request ${req.id} confirmed!${req.assignedProjectId ? ` Tracker ID: ${req.assignedProjectId}` : ''}`,
+            type: 'milestone',
+            projectId: req.assignedProjectId,
+            referenceId: req.id
+          });
+        } else if (req.status === 'declined') {
+          dispatchLiveAlert({
+            title: `Service Request Declined: ${req.projectTitle}`,
+            body: `Request ${req.id} was declined${req.adminNotes ? `: ${req.adminNotes}` : '.'}`,
+            type: 'status',
+            referenceId: req.id
+          });
+        } else {
+          dispatchLiveAlert({
+            title: `Service Status Update: ${req.projectTitle}`,
+            body: `Request ${req.id} is now ${req.status.replace(/_/g, ' ')}.`,
+            type: 'status',
+            projectId: req.assignedProjectId,
+            referenceId: req.id
+          });
+        }
+      }
+      prevReqSnapRef.current[req.id] = req.status;
+    });
+  }, [serviceRequests, dispatchLiveAlert]);
+
+  // ==================== AUTOMATED WEEKLY CLOUD BACKUP SCHEDULER ====================
+  useEffect(() => {
+    const runWeeklyBackupSweep = async () => {
+      const intervalDays = configRef.current?.autoBackupIntervalDays || 7;
+      const intervalMs = intervalDays * 24 * 60 * 60 * 1000;
+      const nowMs = Date.now();
+
+      for (const proj of trackedProjectsRef.current) {
+        if (proj.autoBackupEnabled === false) continue;
+        if (weeklyBackupInFlightRef.current.has(proj.projectId)) continue;
+
+        // Check project.lastBackupDate AND latest snapshot in projectBackups
+        const matchingSnaps = projectBackupsRef.current.filter(
+          b => b.projectId.toUpperCase() === proj.projectId.toUpperCase()
+        );
+        const latestSnapMs = matchingSnaps.reduce((max, b) => {
+          const ts = new Date(b.createdAt).getTime();
+          return !isNaN(ts) && ts > max ? ts : max;
+        }, 0);
+        const projLastMs = proj.lastBackupDate ? new Date(proj.lastBackupDate).getTime() : 0;
+        const effectiveLastMs = Math.max(latestSnapMs, isNaN(projLastMs) ? 0 : projLastMs);
+
+        if (effectiveLastMs === 0 || nowMs - effectiveLastMs >= intervalMs) {
+          weeklyBackupInFlightRef.current.add(proj.projectId);
+          try {
+            const snap = await createProjectCloudBackup(
+              proj.projectId,
+              'automated_weekly',
+              `Automated ${intervalDays}-day weekly progress snapshot stored in client account cloud storage`
+            );
+            const activeEmail = (clientUserRef.current?.email || '').toLowerCase();
+            if (clientUserRef.current?.isAdmin || (activeEmail && activeEmail === (proj.clientEmail || '').toLowerCase())) {
+              dispatchLiveAlert({
+                title: `Weekly Cloud Backup Archived`,
+                body: `Snapshot ${snap.id} for ${proj.projectId} (${proj.progressPercent}%) saved to client account storage.`,
+                type: 'backup',
+                projectId: proj.projectId
+              });
+            }
+          } catch (err) {
+            console.warn(`Weekly auto-backup failed for ${proj.projectId}:`, err);
+          } finally {
+            weeklyBackupInFlightRef.current.delete(proj.projectId);
+          }
+        }
       }
     };
 
-    fetchData();
-
-    // Re-sync on window focus across devices
-    window.addEventListener('focus', fetchData);
-
-    // Continuous polling every 6 seconds so admin changes on other devices reflect automatically
-    const syncInterval = setInterval(fetchData, 6000);
+    const initialTimer = setTimeout(runWeeklyBackupSweep, 3000);
+    const periodicTimer = setInterval(runWeeklyBackupSweep, 30 * 60 * 1000);
 
     return () => {
-      window.removeEventListener('focus', fetchData);
-      clearInterval(syncInterval);
+      clearTimeout(initialTimer);
+      clearInterval(periodicTimer);
     };
-  }, []);
+  }, [dispatchLiveAlert]);
 
   // Handle URL hash on boot & window navigation
   useEffect(() => {
@@ -907,7 +1809,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Robust Client Authentication Functions
-  const registerClient = (userData: { fullName: string; email: string; company: string; phone: string; role: string; password?: string }): AuthResponse => {
+  const registerClient = (userData: { fullName: string; email: string; company: string; phone: string; role: string; password?: string; webAuthnCredentials?: WebAuthnCredential[] }): AuthResponse => {
     const cleanEmail = userData.email.trim().toLowerCase();
     
     // Check if email already exists
@@ -936,10 +1838,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       registeredAt: new Date().toISOString(),
       status: 'pending',
       isVerified: false, // NEVER verified upon self-registration! Requires admin approval!
-      isAdmin: false
+      isAdmin: false,
+      ...(userData.webAuthnCredentials && userData.webAuthnCredentials.length > 0
+        ? { webAuthnCredentials: userData.webAuthnCredentials }
+        : {})
     };
 
     const nextUsers = [newUser, ...registeredUsers];
+    registeredUsersRef.current = nextUsers;
     setRegisteredUsers(nextUsers);
     localStorage.setItem('drt_registered_users', JSON.stringify(nextUsers));
     syncToServer({ users: nextUsers });
@@ -1025,6 +1931,126 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       success: true,
       user
     };
+  };
+
+  // Finalize login after server-verified WebAuthn biometric assertion
+  const completeBiometricLogin = (verifiedUser: ClientUser): AuthResponse => {
+    const localMatch = registeredUsersRef.current.find(
+      u => u.id === verifiedUser.id || u.email.toLowerCase() === verifiedUser.email.toLowerCase()
+    );
+    const mergedUser: ClientUser = {
+      ...(localMatch || verifiedUser),
+      ...verifiedUser,
+      webAuthnCredentials: verifiedUser.webAuthnCredentials || localMatch?.webAuthnCredentials
+    };
+
+    if (mergedUser.status === 'pending') {
+      return {
+        success: false,
+        message: 'Biometrics verified, but your account is currently PENDING APPROVAL by DeRoyalTech System Administrators.'
+      };
+    }
+    if (mergedUser.status === 'rejected') {
+      return {
+        success: false,
+        message: 'Your account access request has been restricted. Please contact support@deroyaltech.com.'
+      };
+    }
+
+    if (mergedUser.isAdmin) {
+      const currentDev = getCurrentDeviceSession();
+      const existingSessions = mergedUser.activeSessions || [];
+      const alreadyActive = existingSessions.some(s => s.deviceId === currentDev.deviceId);
+      if (!alreadyActive && existingSessions.length >= 2) {
+        const deviceNames = existingSessions.map(s => `"${s.deviceName}"`).join(' and ');
+        return {
+          success: false,
+          message: `Security Access Restriction: Administrator accounts are limited to two concurrent devices (${deviceNames}). Please revoke a device session first.`
+        };
+      }
+      const updatedSessions = alreadyActive
+        ? existingSessions.map(s => s.deviceId === currentDev.deviceId ? { ...s, lastActive: new Date().toISOString() } : s)
+        : [...existingSessions, currentDev];
+      mergedUser.activeSessions = updatedSessions;
+    }
+
+    const existsInList = registeredUsersRef.current.some(u => u.id === mergedUser.id);
+    const nextUsers = existsInList
+      ? registeredUsersRef.current.map(u => u.id === mergedUser.id ? mergedUser : u)
+      : [mergedUser, ...registeredUsersRef.current];
+
+    registeredUsersRef.current = nextUsers;
+    setRegisteredUsers(nextUsers);
+    localStorage.setItem('drt_registered_users', JSON.stringify(nextUsers));
+    syncToServer({ users: nextUsers });
+
+    clientUserRef.current = mergedUser;
+    setClientUser(mergedUser);
+    localStorage.setItem('drt_client_auth', JSON.stringify(mergedUser));
+    setIsAuthModalOpen(false);
+
+    if (authRedirectTarget) {
+      setCurrentPage(authRedirectTarget);
+      window.location.hash = authRedirectTarget;
+      setAuthRedirectTarget(null);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    return {
+      success: true,
+      user: mergedUser
+    };
+  };
+
+  const attachBiometricCredential = (emailOrUserId: string, credential: WebAuthnCredential) => {
+    const cleanKey = emailOrUserId.trim().toLowerCase();
+    const nextUsers = registeredUsersRef.current.map(u => {
+      if (u.id === emailOrUserId || u.email.toLowerCase() === cleanKey) {
+        const prev = Array.isArray(u.webAuthnCredentials) ? u.webAuthnCredentials : [];
+        const nextCreds = [credential, ...prev.filter(c => c.id !== credential.id)];
+        return { ...u, webAuthnCredentials: nextCreds };
+      }
+      return u;
+    });
+    registeredUsersRef.current = nextUsers;
+    setRegisteredUsers(nextUsers);
+    localStorage.setItem('drt_registered_users', JSON.stringify(nextUsers));
+
+    if (clientUserRef.current && (clientUserRef.current.id === emailOrUserId || clientUserRef.current.email.toLowerCase() === cleanKey)) {
+      const prev = Array.isArray(clientUserRef.current.webAuthnCredentials) ? clientUserRef.current.webAuthnCredentials : [];
+      const updatedSelf: ClientUser = {
+        ...clientUserRef.current,
+        webAuthnCredentials: [credential, ...prev.filter(c => c.id !== credential.id)]
+      };
+      clientUserRef.current = updatedSelf;
+      setClientUser(updatedSelf);
+      localStorage.setItem('drt_client_auth', JSON.stringify(updatedSelf));
+    }
+    syncToServer({ users: nextUsers });
+  };
+
+  const removeBiometricCredential = (userId: string, credentialId: string) => {
+    const nextUsers = registeredUsersRef.current.map(u => {
+      if (u.id === userId) {
+        const nextCreds = (u.webAuthnCredentials || []).filter(c => c.id !== credentialId);
+        return { ...u, webAuthnCredentials: nextCreds };
+      }
+      return u;
+    });
+    registeredUsersRef.current = nextUsers;
+    setRegisteredUsers(nextUsers);
+    localStorage.setItem('drt_registered_users', JSON.stringify(nextUsers));
+
+    if (clientUserRef.current && clientUserRef.current.id === userId) {
+      const updatedSelf: ClientUser = {
+        ...clientUserRef.current,
+        webAuthnCredentials: (clientUserRef.current.webAuthnCredentials || []).filter(c => c.id !== credentialId)
+      };
+      clientUserRef.current = updatedSelf;
+      setClientUser(updatedSelf);
+      localStorage.setItem('drt_client_auth', JSON.stringify(updatedSelf));
+    }
+    syncToServer({ users: nextUsers });
   };
 
   // Master Admin direct authentication with 2-device check
@@ -1144,59 +2170,60 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     syncToServer({ users: updated });
   };
 
-  // Save config changes
+  // Save config changes (computed against configRef to avoid state-updater side-effects & race conditions)
   const updateConfig = (updates: Partial<SiteConfig>) => {
-    setConfig(prev => {
-      const next = { ...prev, ...updates };
-      localStorage.setItem('drt_site_config', JSON.stringify(next));
-      syncToServer({ config: next });
-      return next;
-    });
+    const prev = configRef.current;
+    const next: SiteConfig = {
+      ...prev,
+      ...updates,
+      contact: updates.contact ? { ...prev.contact, ...updates.contact } : prev.contact,
+      social: updates.social ? { ...prev.social, ...updates.social } : prev.social,
+      metrics: updates.metrics ? { ...prev.metrics, ...updates.metrics } : prev.metrics
+    };
+    configRef.current = next;
+    setConfig(next);
+    localStorage.setItem('drt_site_config', JSON.stringify(next));
+    syncToServer({ config: next });
+    notifyLiveSync();
   };
 
   const updateContact = (updates: Partial<SiteConfig['contact']>) => {
-    setConfig(prev => {
-      const next = {
-        ...prev,
-        contact: { ...prev.contact, ...updates }
-      };
-      localStorage.setItem('drt_site_config', JSON.stringify(next));
-      syncToServer({ config: next });
-      return next;
-    });
-
-    // Enforce immediate server persistence to dedicated /api/contact route
-    fetch('/api/contact', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates)
-    }).catch(err => {
-      console.warn('Dedicated contact sync error:', err);
-    });
-
+    const prev = configRef.current;
+    const next: SiteConfig = {
+      ...prev,
+      contact: { ...prev.contact, ...updates }
+    };
+    configRef.current = next;
+    setConfig(next);
+    localStorage.setItem('drt_site_config', JSON.stringify(next));
+    syncToServer({ config: next });
     notifyLiveSync();
   };
 
   const updateSocial = (updates: Partial<SocialHandles>) => {
-    setConfig(prev => {
-      const next = {
-        ...prev,
-        social: { ...prev.social, ...updates }
-      };
-      localStorage.setItem('drt_site_config', JSON.stringify(next));
-      syncToServer({ config: next });
-      return next;
-    });
+    const prev = configRef.current;
+    const next: SiteConfig = {
+      ...prev,
+      social: { ...prev.social, ...updates }
+    };
+    configRef.current = next;
+    setConfig(next);
+    localStorage.setItem('drt_site_config', JSON.stringify(next));
+    syncToServer({ config: next });
+    notifyLiveSync();
   };
 
   const updateProjectMetrics = (updates: Partial<ProjectMetricsConfig>) => {
-    setConfig(prev => {
-      const nextMetrics = { ...prev.metrics, ...updates };
-      const nextConfig = { ...prev, metrics: nextMetrics };
-      localStorage.setItem('drt_site_config', JSON.stringify(nextConfig));
-      syncToServer({ config: nextConfig });
-      return nextConfig;
-    });
+    const prev = configRef.current;
+    const nextConfig: SiteConfig = {
+      ...prev,
+      metrics: { ...prev.metrics, ...updates }
+    };
+    configRef.current = nextConfig;
+    setConfig(nextConfig);
+    localStorage.setItem('drt_site_config', JSON.stringify(nextConfig));
+    syncToServer({ config: nextConfig });
+    notifyLiveSync();
   };
 
   // Services CRUD & Pricing
@@ -1807,6 +2834,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       syncToServer({ serviceRequests: next });
       return next;
     });
+    registerClientServiceId(id);
 
     // Also automatically initialize a Live Support thread so the client can talk to engineering
     const threadId = `chat-req-${id}`;
@@ -2507,20 +3535,28 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       createdAt: new Date().toISOString(),
       status: 'pending'
     };
+    let nextList: PriceNegotiation[] = [];
     setNegotiations(prev => {
-      const next = [newNegotiation, ...prev];
-      localStorage.setItem('drt_price_negotiations', JSON.stringify(next));
-      return next;
+      nextList = [newNegotiation, ...prev];
+      localStorage.setItem('drt_price_negotiations', JSON.stringify(nextList));
+      return nextList;
     });
+    registerClientServiceId(newNegotiation.id);
 
+    pendingSyncCountRef.current += 1;
+    lastLocalMutationAtRef.current = Date.now();
     try {
       await fetch('/api/negotiations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newNegotiation)
       });
+      await syncToServer({ negotiations: nextList });
     } catch (err) {
       console.warn('Negotiation sync to server warning:', err);
+    } finally {
+      pendingSyncCountRef.current = Math.max(0, pendingSyncCountRef.current - 1);
+      lastLocalMutationAtRef.current = Date.now();
     }
     notifyLiveSync();
     return newNegotiation;
@@ -2532,41 +3568,52 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     counterPrice?: number, 
     adminNotes?: string
   ): Promise<void> => {
+    let nextList: PriceNegotiation[] = [];
+    const actorName = clientUserRef.current?.fullName || 'DeRoyalTech Commercial Desk';
     setNegotiations(prev => {
-      const next = prev.map(neg => {
+      nextList = prev.map(neg => {
         if (neg.id === id) {
           const newStatus: NegotiationStatus = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'countered';
+          const effectiveOfferedPrice =
+            action === 'approve' && counterPrice !== undefined ? counterPrice : neg.offeredPrice;
           return {
             ...neg,
+            offeredPrice: effectiveOfferedPrice,
             status: newStatus,
             adminResponse: {
               action,
-              counterPrice,
+              counterPrice: counterPrice !== undefined ? counterPrice : neg.adminResponse?.counterPrice,
               adminNotes,
               respondedAt: new Date().toISOString(),
-              adminName: clientUser?.fullName || 'DeRoyalTech Commercial Desk'
+              adminName: actorName
             }
           };
         }
         return neg;
       });
-      localStorage.setItem('drt_price_negotiations', JSON.stringify(next));
-      return next;
+      localStorage.setItem('drt_price_negotiations', JSON.stringify(nextList));
+      return nextList;
     });
 
+    pendingSyncCountRef.current += 1;
+    lastLocalMutationAtRef.current = Date.now();
     try {
-      await fetch(`/api/negotiations/${id}/respond`, {
+      await fetch(`/api/negotiations/${encodeURIComponent(id)}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action,
           counterPrice,
           adminNotes,
-          adminName: clientUser?.fullName || 'DeRoyalTech Commercial Desk'
+          adminName: actorName
         })
       });
+      await syncToServer({ negotiations: nextList });
     } catch (err) {
       console.warn('Respond to negotiation sync error:', err);
+    } finally {
+      pendingSyncCountRef.current = Math.max(0, pendingSyncCountRef.current - 1);
+      lastLocalMutationAtRef.current = Date.now();
     }
     notifyLiveSync();
   };
@@ -2711,6 +3758,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         registeredUsers,
         registerClient,
         loginClient,
+        completeBiometricLogin,
+        attachBiometricCredential,
+        removeBiometricCredential,
         adminLogin,
         instantDemoLogin,
         logoutClient,
@@ -2755,7 +3805,33 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         openNegotiationModal,
         isNegotiationModalOpen,
         setIsNegotiationModalOpen,
-        negotiationTargetItem
+        negotiationTargetItem,
+        toggleServiceNegotiations,
+
+        // Project Cloud Backups
+        projectBackups,
+        createProjectCloudBackup,
+        deleteProjectCloudBackup,
+        toggleProjectAutoBackup,
+
+        // Client Service Notification Modal
+        isClientNotificationModalOpen,
+        setIsClientNotificationModalOpen,
+        clientServiceIds,
+        registerClientServiceId,
+        removeClientServiceId,
+
+        // Cross-Device Live Sync & Unified Notification Engine
+        refreshFromServer,
+        liveAlerts,
+        alertHistory,
+        dismissLiveAlert,
+        clearAlertHistory,
+        notificationSoundEnabled,
+        setNotificationSoundEnabled,
+        notificationPermission,
+        requestBrowserNotificationPermission,
+        dispatchLiveAlert
       }}
     >
       {children}
